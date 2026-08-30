@@ -1,0 +1,92 @@
+rules_version = '2';
+
+// Paste into Firebase console > Firestore Database > Security, with the
+// `default` database selected, then Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Rules run server-side with full read access, so this can look at a
+    // document the client itself is forbidden to read.
+    function isAdmin() {
+      return signedIn()
+             && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function adminCode() {
+      return get(/databases/$(database)/documents/config/admin).data.code;
+    }
+
+    // ------------------------------------------------------------ config
+    //
+    // Holds the admin secret. Closed to every client in both directions - the
+    // only thing that ever reads it is adminCode() above. Create the document
+    // by hand in the console:
+    //
+    //     config/admin  ->  { code: "sajjad-vai" }
+    match /config/{document} {
+      allow read, write: if false;
+    }
+
+    // ------------------------------------------------------------ admins
+    //
+    // Unlocking is a self-write whose `code` field must match config/admin.
+    // A wrong code fails as permission-denied, and because the comparison
+    // happens here, the secret never ships in the app and cannot be read out
+    // of Firestore by a client.
+    //
+    // Only create is allowed: an admin cannot rewrite the record afterwards,
+    // and revoking access means deleting the document from the console.
+    match /admins/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create: if signedIn()
+                    && request.auth.uid == userId
+                    && request.resource.data.code == adminCode();
+      allow delete: if signedIn() && request.auth.uid == userId;
+    }
+
+    // ------------------------------------------------------------- users
+    match /users/{userId} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+      // Admins read profiles but never write them.
+      allow read: if isAdmin();
+    }
+
+    // ---------------------------------------------------------- products
+    //
+    // Everyone signed in reads the catalogue; only admins change it.
+    match /products/{productId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // ------------------------------------------------------------ orders
+    //
+    // `create` checks request.resource (the incoming document) so nobody can
+    // file an order under someone else's uid.
+    //
+    // A customer can read their own orders but never edit one: marking cash as
+    // collected is an admin action, and the update rule pins it to the payment
+    // fields so an admin cannot quietly rewrite the items or the total.
+    match /orders/{orderId} {
+      allow create: if signedIn()
+                    && request.resource.data.user_id == request.auth.uid;
+
+      allow read: if isAdmin()
+                  || (signedIn() && resource.data.user_id == request.auth.uid);
+
+      allow update: if isAdmin()
+                    && request.resource.data.diff(resource.data)
+                         .affectedKeys()
+                         .hasOnly(['payment_status', 'collected_at']);
+    }
+
+    // Everything else is closed until a feature needs it.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,13 @@
+# Copy this file to `key.properties` (same folder) and fill in the real values.
+#
+# key.properties itself is gitignored - it holds the passwords to the signing
+# key, and anyone with that key can publish an update that Android will accept
+# as genuinely yours.
+#
+# storeFile: full path to the .jks. Keep the keystore OUTSIDE the repo so a
+# `git add -A` can never sweep it in. Forward slashes work on Windows.
+
+storePassword=your-store-password
+keyPassword=your-key-password
+keyAlias=upload
+storeFile=C:/Users/HP/keys/kms-release.jks

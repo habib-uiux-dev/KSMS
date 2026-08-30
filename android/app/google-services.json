@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "230061925255",
+    "project_id": "ksms-1ad4b",
+    "storage_bucket": "ksms-1ad4b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:230061925255:android:38a7157fbddf3d5e14e922",
+        "android_client_info": {
+          "package_name": "com.kms.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "230061925255-d9o0fp9jiq9t08cl83f3ffbnpslbhl5c.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kms.app",
+            "certificate_hash": "fb97112ef6cf5325cb85fd734e74276facdef13a"
+          }
+        },
+        {
+          "client_id": "230061925255-uu6or8klhg433mtv5caltkmqrjhg1lb2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kms.app",
+            "certificate_hash": "674344d014ae6fe876d04f8fa567b2734bd50927"
+          }
+        },
+        {
+          "client_id": "230061925255-34ak8hc9qnv5bbs8d7m42v0mc4jorikl.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCzNDyjX_4PexBxulUXKzWCazIKVK5_lgY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "230061925255-34ak8hc9qnv5bbs8d7m42v0mc4jorikl.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,5 @@
+package com.kms.app
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()
