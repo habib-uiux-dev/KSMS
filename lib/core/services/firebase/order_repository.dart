@@ -32,19 +32,26 @@ class OrderRepository {
     return doc.exists ? ShopOrder.fromDoc(doc) : null;
   }
 
-  /// Creates today's order, or replaces the basket in the existing one.
+  /// Creates today's order, revives a cancelled one, or replaces the basket in
+  /// a live one.
   ///
-  /// Create and update send different payloads on purpose: the security rule
-  /// lets an owner change only the basket fields, so an update that re-sent
-  /// `created_at` or `order_date` would be rejected. Returns the document id.
+  /// Three payloads, not one, because the security rules allow three different
+  /// sets of keys. An owner editing a live order may touch only the basket, so
+  /// an update that re-sent `created_at` or `order_date` would be rejected
+  /// outright. Reviving additionally has to flip `status` and clear the
+  /// cancellation fields, which the ordinary edit is forbidden to do.
+  ///
+  /// Returns the document id.
   Future<String> placeOrEditOrder(ShopOrder order) async {
     final ref = _orders.doc(ShopOrder.idFor(order.userId, order.orderDate));
     final existing = await ref.get();
 
-    if (existing.exists) {
-      await ref.update(order.toUpdateMap());
-    } else {
+    if (!existing.exists) {
       await ref.set(order.toCreateMap());
+    } else if (ShopOrder.fromDoc(existing).isCancelled) {
+      await ref.update(order.toReviveMap());
+    } else {
+      await ref.update(order.toUpdateMap());
     }
     return ref.id;
   }
@@ -113,8 +120,26 @@ class OrderRepository {
   /// is also all the security rule allows an admin to change.
   // ------------------------------------------------------- admin corrections
 
-  /// Removes an order outright. Admin-only, and the rule says so too.
-  Future<void> deleteOrder(String orderId) => _orders.doc(orderId).delete();
+  /// Cancels an order instead of deleting it. Admin-only, and the rule agrees.
+  ///
+  /// Deleting was the original behaviour and it was silently hostile: the
+  /// document vanished, the owner's listener saw `null`, and their home screen
+  /// went back to "Place Order" as though they had never ordered. Nobody was
+  /// told anything. A cancelled document is the only way the app can say what
+  /// happened - and the only way it can say who did it.
+  Future<void> cancelOrder(
+    String orderId, {
+    required String adminUid,
+    required String reason,
+  }) {
+    return _orders.doc(orderId).update({
+      'status': OrderStatus.cancelled.name,
+      'cancelled_at': FieldValue.serverTimestamp(),
+      'cancelled_by': adminUid,
+      'cancel_reason': reason,
+      'updated_at': FieldValue.serverTimestamp(),
+    });
+  }
 
   /// Rewrites the basket of somebody else's order.
   ///

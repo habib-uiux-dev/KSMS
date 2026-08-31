@@ -77,6 +77,10 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------- users
+    //
+    // A person owns their own profile outright, including the name and the
+    // designation they set from the drawer. Nobody else writes it: an admin can
+    // look, and that is all.
     match /users/{userId} {
       allow read, write: if signedIn() && request.auth.uid == userId;
       allow read: if isAdmin();
@@ -106,26 +110,96 @@ service cloud.firestore {
                     // Nobody marks their own order paid.
                     && request.resource.data.payment_status == 'pending';
 
-      allow read: if isAdmin()
-                  || (signedIn() && resource.data.user_id == request.auth.uid);
+      // Readable by anyone signed in, because the leaderboard adds up the whole
+      // office and Firestore has no way to serve a total without serving the
+      // rows behind it. The trade-off is real and worth saying out loud: any
+      // colleague can now see any other colleague's individual orders. Closing
+      // that would mean a Cloud Function writing pre-computed totals to a
+      // separate collection, which this project does not have.
+      allow read: if signedIn();
 
       // The owner may change the basket, and only the basket - while the shop
       // is open and before the cash has been collected. Editing after payment
       // would put the collected total and the order out of step.
+      //
+      // A cancelled order is excluded here so the ONLY way out of `cancelled`
+      // is the revive rule below, which insists the status flips too. Without
+      // that check someone could edit the lines of a struck-out order and be
+      // looking at a basket that no longer means anything.
       allow update: if signedIn()
                     && resource.data.user_id == request.auth.uid
                     && orderingOpen()
                     && resource.data.payment_status == 'pending'
+                    && resource.data.status != 'cancelled'
                     && request.resource.data.diff(resource.data)
                          .affectedKeys()
                          .hasOnly(['items', 'item_count', 'total', 'updated_at']);
 
-      // An admin may move money, and only money. Not the items, not the total -
-      // so an admin cannot quietly rewrite what someone ordered.
+      // Ordering again after the shop cancelled today's order.
+      //
+      // The document id is uid_yyyyMMdd, so the cancelled order still occupies
+      // the address a new one would need - reviving it in place is what keeps
+      // one-order-per-day true with no second document to reconcile.
+      //
+      // Safe against abuse because only an admin can set 'cancelled' in the
+      // first place: a user cannot cancel-and-reorder their way to two orders.
+      allow update: if signedIn()
+                    && resource.data.user_id == request.auth.uid
+                    && orderingOpen()
+                    && resource.data.status == 'cancelled'
+                    && request.resource.data.status == 'placed'
+                    && request.resource.data.payment_status == 'pending'
+                    && request.resource.data.diff(resource.data)
+                         .affectedKeys()
+                         .hasOnly(['items', 'item_count', 'total', 'updated_at',
+                                   'status', 'cancelled_at', 'cancelled_by',
+                                   'cancel_reason']);
+
+      // An admin may move money.
       allow update: if isAdmin()
                     && request.resource.data.diff(resource.data)
                          .affectedKeys()
                          .hasOnly(['payment_status', 'collected_at']);
+
+      // ...and correct the basket, because the person behind the counter is the
+      // one who finds out that the packet is gone or that somebody asked for a
+      // second one in person.
+      //
+      // Note what stays untouchable even here: user_id, order_date and
+      // created_at. An admin can fix what was ordered; an admin cannot move an
+      // order onto somebody else's name or into another day.
+      //
+      // Unlike the owner's rule this does not require orderingOpen() or a
+      // pending payment - corrections happen after the shop shuts, which is
+      // precisely when they are needed.
+      allow update: if isAdmin()
+                    && request.resource.data.diff(resource.data)
+                         .affectedKeys()
+                         .hasOnly(['items', 'item_count', 'total', 'updated_at']);
+
+      // An admin cancels rather than deletes.
+      //
+      // Deleting is refused outright below, and that is the point: a deleted
+      // order cannot be shown to the person who placed it, so "your order was
+      // cancelled" would have nothing to render. The document has to survive
+      // for the message to exist.
+      //
+      // payment_status must still be 'pending'. Cancelling an order whose cash
+      // is already in the tin would leave the takings and the orders
+      // disagreeing - the admin has to undo the collection first, which is a
+      // real step because the money has to go back.
+      allow update: if isAdmin()
+                    && resource.data.status != 'cancelled'
+                    && resource.data.payment_status == 'pending'
+                    && request.resource.data.status == 'cancelled'
+                    && request.resource.data.diff(resource.data)
+                         .affectedKeys()
+                         .hasOnly(['status', 'cancelled_at', 'cancelled_by',
+                                   'cancel_reason', 'updated_at']);
+
+      // Nobody deletes an order - not the owner, not an admin. Cancelling is
+      // the only removal, and it keeps the trail.
+      allow delete: if false;
     }
 
     // Everything else is closed until a feature needs it.

@@ -7,6 +7,7 @@ import '../../../core/routes/app_pages.dart';
 import '../../../core/widgets/image_loader.dart';
 import '../../admin/controller/admin_controller.dart';
 import '../controller/home_controller.dart';
+import 'edit_profile_sheet.dart';
 
 const Color _green = Color(0xFF1E8C3A);
 const Color _ink = Color(0xFF23332B);
@@ -99,54 +100,92 @@ class _Header extends StatelessWidget {
 
   final HomeController controller;
 
+  /// Closes the drawer first, then opens the sheet.
+  ///
+  /// Stacking a modal sheet on top of an open drawer leaves two dismiss
+  /// gestures fighting each other. `Get.context` is the navigator's own
+  /// context, so it outlives the drawer being popped here.
+  void _openEditor(BuildContext context) {
+    Navigator.pop(context);
+    final navigatorContext = Get.context;
+    if (navigatorContext != null) showEditProfileSheet(navigatorContext);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.fromLTRB(20.w, 50.h, 20.w, 20.h),
+    return Material(
       color: _green,
-      child: Obx(() {
-        final url = controller.avatarUrl;
-        final designation = controller.greetingDesignation;
+      child: InkWell(
+        onTap: () => _openEditor(context),
+        child: Container(
+          width: double.infinity,
+          padding: EdgeInsets.fromLTRB(20.w, 50.h, 20.w, 20.h),
+          child: Obx(() {
+            final url = controller.avatarUrl;
+            final designation = controller.greetingDesignation;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(
-              radius: 30.r,
-              backgroundColor: Colors.white24,
-              child: ClipOval(
-                child: url != null && url.isNotEmpty
-                    ? ImageLoader(url: url, size: 60.sp, boxFit: BoxFit.cover)
-                    : Icon(Icons.person, size: 32.sp, color: Colors.white),
-              ),
-            ),
-            SizedBox(height: 12.h),
-            Text(
-              controller.greetingName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.openSans(
-                fontSize: 18.sp,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            if (designation.isNotEmpty) ...[
-              SizedBox(height: 2.h),
-              Text(
-                designation,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.openSans(
-                  fontSize: 13.sp,
-                  color: Colors.white70,
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  radius: 30.r,
+                  backgroundColor: Colors.white24,
+                  child: ClipOval(
+                    child: url != null && url.isNotEmpty
+                        ? ImageLoader(
+                            url: url,
+                            size: 60.sp,
+                            boxFit: BoxFit.cover,
+                          )
+                        : Icon(Icons.person, size: 32.sp, color: Colors.white),
+                  ),
                 ),
-              ),
-            ],
-          ],
-        );
-      }),
+                SizedBox(height: 12.h),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            controller.greetingName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.openSans(
+                              fontSize: 18.sp,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          if (designation.isNotEmpty) ...[
+                            SizedBox(height: 2.h),
+                            Text(
+                              designation,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.openSans(
+                                fontSize: 13.sp,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    // A whole tappable header with no affordance reads as
+                    // decoration, so the pencil says it is editable.
+                    Icon(
+                      Icons.edit_outlined,
+                      size: 18.sp,
+                      color: Colors.white70,
+                    ),
+                  ],
+                ),
+              ],
+            );
+          }),
+        ),
+      ),
     );
   }
 }

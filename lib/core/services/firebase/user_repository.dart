@@ -47,6 +47,19 @@ class UserRepository {
     return AppUser.fromDoc(fresh);
   }
 
+  /// Saves whatever the profile sheet changed. Merges, so passing one field
+  /// leaves the other alone.
+  Future<void> updateProfile(
+    String uid, {
+    String? name,
+    String? designation,
+  }) {
+    final data = <String, dynamic>{};
+    if (name != null) data['name'] = name;
+    if (designation != null) data['designation'] = designation;
+    return _users.doc(uid).set(data, SetOptions(merge: true));
+  }
+
   Future<void> updateDesignation(String uid, String designation) => _users
       .doc(uid)
       .set({'designation': designation}, SetOptions(merge: true));

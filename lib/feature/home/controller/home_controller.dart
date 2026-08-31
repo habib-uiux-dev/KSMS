@@ -98,6 +98,42 @@ class HomeController extends GetxController {
     }
   }
 
+  final isSavingProfile = false.obs;
+
+  /// Writes the profile sheet's changes and refreshes what the drawer shows.
+  ///
+  /// Returns true on success so the caller knows whether to close the sheet -
+  /// a failed save should leave it open with the typed name still in it.
+  Future<bool> updateProfile({
+    required String name,
+    required String designation,
+  }) async {
+    final id = uid;
+    if (id == null || isSavingProfile.value) return false;
+
+    isSavingProfile.value = true;
+    try {
+      await _userRepository.updateProfile(
+        id,
+        name: name,
+        designation: designation,
+      );
+      await loadUser();
+      showCustomToast('Profile updated');
+      return true;
+    } on FirebaseException catch (e) {
+      log('Profile update failed: ${e.code} ${e.message}');
+      showCustomToast('Could not save (${e.code})');
+      return false;
+    } catch (e) {
+      log('Profile update failed: $e');
+      showCustomToast('Could not save your profile');
+      return false;
+    } finally {
+      isSavingProfile.value = false;
+    }
+  }
+
   String get greetingName =>
       appUser.value?.name ??
       FirebaseAuth.instance.currentUser?.displayName ??
@@ -181,11 +217,29 @@ class HomeController extends GetxController {
         .watchMyOrderForToday(id)
         .listen(
           (order) {
+            final wasLive = todayOrder.value?.isCancelled == false;
             todayOrder.value = order;
+
+            // The admin cancelled it while the screen was open. The stream
+            // brings the news on its own - no polling, no push - but only if
+            // something reacts to it, which is what the banner and this reset
+            // are for. Silence here is what made a deletion invisible.
+            if (order != null && order.isCancelled && wasLive) {
+              _cartPrefilled = false;
+              cart.clear();
+              cancelNoticeDismissed.value = false;
+              showCustomToast(
+                'আপনার আজকের অর্ডারটি বাতিল করা হয়েছে',
+                duration: 4,
+              );
+              return;
+            }
 
             // Reopening the app mid-day should show the basket the user
             // already submitted, so they can adjust it rather than rebuild it.
-            if (order != null && !_cartPrefilled) {
+            // A cancelled order is deliberately not prefilled: the point is to
+            // start again, not to re-submit what was just struck out.
+            if (order != null && !order.isCancelled && !_cartPrefilled) {
               _cartPrefilled = true;
               cart.value = {
                 for (final item in order.items) item.productId: item.quantity,
@@ -195,6 +249,24 @@ class HomeController extends GetxController {
           onError: (Object e) => log("Today's order stream failed: $e"),
         );
   }
+
+  // ------------------------------------------------------ cancellation notice
+
+  /// Hides the red banner for the rest of this session.
+  ///
+  /// Not written to Firestore: the order itself is the record, and one
+  /// dismissal per app launch is enough to stop it nagging without hiding it
+  /// from someone who reopens the app later and never saw it.
+  final cancelNoticeDismissed = false.obs;
+
+  /// Today's order, but only while it is cancelled and the notice still stands.
+  ShopOrder? get cancelledOrder {
+    final order = todayOrder.value;
+    if (order == null || !order.isCancelled) return null;
+    return cancelNoticeDismissed.value ? null : order;
+  }
+
+  void dismissCancelNotice() => cancelNoticeDismissed.value = true;
 
   void _listenToSettings() {
     _settingsSub?.cancel();
@@ -210,8 +282,16 @@ class HomeController extends GetxController {
         );
   }
 
-  /// True once today's order exists - the button then says "Edit Order".
-  bool get isEditingOrder => todayOrder.value != null;
+  /// True once today's order exists and is live - the button then says
+  /// "Edit Order".
+  ///
+  /// A cancelled order reads as no order at all here, on purpose: the button
+  /// goes back to "Place Order" and the flow is the ordinary one, even though
+  /// underneath it is reviving a document rather than creating one.
+  bool get isEditingOrder {
+    final order = todayOrder.value;
+    return order != null && !order.isCancelled;
+  }
 
   /// Editing stops once the cash is in: letting someone add items after paying
   /// would put the collected total and the order out of step.
