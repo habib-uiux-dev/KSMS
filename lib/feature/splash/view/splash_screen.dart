@@ -52,10 +52,7 @@ class _SplashScreenState extends State<SplashScreen> {
     SessionManager.setValue(kIsLogin, isLoggedIn);
 
     if (!isLoggedIn) {
-      const ScreenTransition(
-        routeName: Routes.login,
-        replace: true,
-      ).navigate();
+      const ScreenTransition(routeName: Routes.login, replace: true).navigate();
       return;
     }
 
