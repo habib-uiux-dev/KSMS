@@ -25,6 +25,17 @@ class OrderItem {
 
   int get lineTotal => price * quantity;
 
+  /// Only the quantity ever changes on an existing line: name and price are
+  /// what they were when the order was placed, and a later price change must
+  /// not rewrite history.
+  OrderItem copyWith({int? quantity}) => OrderItem(
+    productId: productId,
+    name: name,
+    subtitle: subtitle,
+    price: price,
+    quantity: quantity ?? this.quantity,
+  );
+
   factory OrderItem.fromProduct(Product product, int quantity) => OrderItem(
     productId: product.id,
     name: product.name,
@@ -81,7 +92,16 @@ class ShopOrder {
   final int total;
   final OrderStatus status;
   final PaymentStatus paymentStatus;
+
+  /// The shop day this order belongs to, as yyyyMMdd (20260830).
+  ///
+  /// An int, not a string, because the security rule has to recompute it from
+  /// the server clock and rules can do arithmetic far more easily than they can
+  /// format a date.
+  final int orderDate;
+
   final DateTime? createdAt;
+  final DateTime? updatedAt;
   final DateTime? collectedAt;
 
   const ShopOrder({
@@ -94,11 +114,25 @@ class ShopOrder {
     this.total = 0,
     this.status = OrderStatus.placed,
     this.paymentStatus = PaymentStatus.pending,
+    this.orderDate = 0,
     this.createdAt,
+    this.updatedAt,
     this.collectedAt,
   });
 
   bool get isCollected => paymentStatus == PaymentStatus.collected;
+
+  /// yyyyMMdd for a local date. Local, not UTC: the shop's day is the day the
+  /// people in it are living, and Bangladesh is a fixed UTC+6 with no DST.
+  static int dateKeyOf(DateTime date) =>
+      date.year * 10000 + date.month * 100 + date.day;
+
+  static int todayKey() => dateKeyOf(DateTime.now());
+
+  /// One order per person per day is enforced by the document path itself -
+  /// a second order for the same day is a write to the same document, so a
+  /// duplicate cannot exist even if a client tries.
+  static String idFor(String uid, int dateKey) => '${uid}_$dateKey';
 
   factory ShopOrder.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final map = doc.data() ?? const <String, dynamic>{};
@@ -118,7 +152,9 @@ class ShopOrder {
       total: (map['total'] as num?)?.toInt() ?? 0,
       status: _statusFrom(map['status'] as String?),
       paymentStatus: _paymentFrom(map['payment_status'] as String?),
+      orderDate: (map['order_date'] as num?)?.toInt() ?? 0,
       createdAt: (map['created_at'] as Timestamp?)?.toDate(),
+      updatedAt: (map['updated_at'] as Timestamp?)?.toDate(),
       collectedAt: (map['collected_at'] as Timestamp?)?.toDate(),
     );
   }
@@ -134,6 +170,19 @@ class ShopOrder {
     'total': total,
     'status': status.name,
     'payment_status': paymentStatus.name,
+    'order_date': orderDate,
     'created_at': FieldValue.serverTimestamp(),
+  };
+
+  /// An edit touches only the basket.
+  ///
+  /// `created_at`, `order_date` and `payment_status` are deliberately absent:
+  /// the security rule rejects an update that changes anything outside this
+  /// list, so re-sending them would fail the write.
+  Map<String, dynamic> toUpdateMap() => {
+    'items': items.map((e) => e.toMap()).toList(),
+    'item_count': itemCount,
+    'total': total,
+    'updated_at': FieldValue.serverTimestamp(),
   };
 }

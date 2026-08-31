@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 
 import '../../../core/services/firebase/order_repository.dart';
 import '../../../core/services/firebase/product_repository.dart';
+import '../../../core/services/firebase/settings_repository.dart';
 import '../../../core/services/firebase/user_repository.dart';
 import '../../../core/widgets/show_custom_toast.dart';
 import '../../auth/model/app_user.dart';
@@ -22,13 +23,20 @@ class HomeController extends GetxController {
     ProductRepository? productRepository,
     OrderRepository? orderRepository,
     UserRepository? userRepository,
+    SettingsRepository? settingsRepository,
   }) : _productRepository = productRepository ?? ProductRepository(),
        _orderRepository = orderRepository ?? OrderRepository(),
-       _userRepository = userRepository ?? UserRepository();
+       _userRepository = userRepository ?? UserRepository(),
+       _settingsRepository = settingsRepository ?? SettingsRepository();
 
   final ProductRepository _productRepository;
   final OrderRepository _orderRepository;
   final UserRepository _userRepository;
+  final SettingsRepository _settingsRepository;
+
+  /// Shown when someone taps the order button while the shop is closed.
+  static const String closedMessage =
+      'এখন অর্ডার নেওয়া হচ্ছে না। KSMS অ্যাডমিনের সাথে যোগাযোগ করুন।';
 
   static const String allCategory = 'All';
 
@@ -44,7 +52,20 @@ class HomeController extends GetxController {
   /// `isEmpty` alone answers "is the cart empty".
   final cart = <String, int>{}.obs;
 
+  /// Today's order, or null before the first one is placed.
+  final todayOrder = Rxn<ShopOrder>();
+
+  /// False while the admin has ordering switched off.
+  final orderingOpen = true.obs;
+
   StreamSubscription<List<Product>>? _productSub;
+  StreamSubscription<ShopOrder?>? _orderSub;
+  StreamSubscription<bool>? _settingsSub;
+
+  /// The basket is filled from the saved order once, on first load. Without
+  /// this guard every incoming snapshot - including the one caused by the
+  /// user's own edit - would overwrite what they are typing.
+  bool _cartPrefilled = false;
 
   String? get uid => FirebaseAuth.instance.currentUser?.uid;
 
@@ -53,11 +74,15 @@ class HomeController extends GetxController {
     super.onInit();
     loadUser();
     _listenToProducts();
+    _listenToTodayOrder();
+    _listenToSettings();
   }
 
   @override
   void onClose() {
     _productSub?.cancel();
+    _orderSub?.cancel();
+    _settingsSub?.cancel();
     super.onClose();
   }
 
@@ -145,6 +170,53 @@ class HomeController extends GetxController {
 
   void selectCategory(String category) => selectedCategory.value = category;
 
+  // ------------------------------------------------------- today's order
+
+  void _listenToTodayOrder() {
+    final id = uid;
+    if (id == null) return;
+
+    _orderSub?.cancel();
+    _orderSub = _orderRepository
+        .watchMyOrderForToday(id)
+        .listen(
+          (order) {
+            todayOrder.value = order;
+
+            // Reopening the app mid-day should show the basket the user
+            // already submitted, so they can adjust it rather than rebuild it.
+            if (order != null && !_cartPrefilled) {
+              _cartPrefilled = true;
+              cart.value = {
+                for (final item in order.items) item.productId: item.quantity,
+              };
+            }
+          },
+          onError: (Object e) => log("Today's order stream failed: $e"),
+        );
+  }
+
+  void _listenToSettings() {
+    _settingsSub?.cancel();
+    _settingsSub = _settingsRepository
+        .watchOrderingOpen()
+        .listen(
+          (isOpen) => orderingOpen.value = isOpen,
+          // Fail open: a settings read that breaks must not lock the shop.
+          onError: (Object e) {
+            log('Ordering flag stream failed: $e');
+            orderingOpen.value = true;
+          },
+        );
+  }
+
+  /// True once today's order exists - the button then says "Edit Order".
+  bool get isEditingOrder => todayOrder.value != null;
+
+  /// Editing stops once the cash is in: letting someone add items after paying
+  /// would put the collected total and the order out of step.
+  bool get isOrderLocked => todayOrder.value?.isCollected ?? false;
+
   // ---------------------------------------------------------------- cart
 
   int quantityOf(String productId) => cart[productId] ?? 0;
@@ -199,6 +271,18 @@ class HomeController extends GetxController {
   Future<void> placeOrder() async {
     if (isPlacingOrder.value) return;
 
+    // Checked here as well as in the button, because the flag can flip while
+    // the screen is open. The rule enforces it server-side regardless.
+    if (!orderingOpen.value) {
+      showCustomToast(closedMessage, duration: 4);
+      return;
+    }
+
+    if (isOrderLocked) {
+      showCustomToast('Payment already collected - this order is locked');
+      return;
+    }
+
     final items = cartItems;
     if (items.isEmpty) {
       showCustomToast('Add something to your order first');
@@ -211,6 +295,7 @@ class HomeController extends GetxController {
       return;
     }
 
+    final wasEditing = isEditingOrder;
     isPlacingOrder.value = true;
     try {
       final order = ShopOrder(
@@ -222,20 +307,33 @@ class HomeController extends GetxController {
         // Recomputed from the resolved items, never from the UI, so the stored
         // total always matches the stored lines.
         total: items.fold(0, (running, item) => running + item.lineTotal),
+        orderDate: ShopOrder.todayKey(),
       );
 
-      await _orderRepository.placeOrder(order);
+      await _orderRepository.placeOrEditOrder(order);
 
-      clearCart();
-      showCustomToast('Order placed · ৳${order.total}');
+      // The basket is NOT cleared: it now mirrors the saved order, so the user
+      // can keep adjusting it. The stream will confirm what actually landed.
+      showCustomToast(
+        wasEditing
+            ? 'Order updated · ৳${order.total}'
+            : 'Order placed · ৳${order.total}',
+      );
     } on FirebaseException catch (e) {
       log('Place order failed: ${e.code} ${e.message}');
+      // permission-denied here almost always means the admin closed ordering
+      // between the button appearing and the write landing.
       showCustomToast(
-        kDebugMode ? 'Order failed (${e.code})' : 'Could not place your order',
+        e.code == 'permission-denied'
+            ? closedMessage
+            : kDebugMode
+            ? 'Order failed (${e.code})'
+            : 'Could not save your order',
+        duration: 4,
       );
     } catch (e) {
       log('Place order failed: $e');
-      showCustomToast('Could not place your order');
+      showCustomToast('Could not save your order');
     } finally {
       isPlacingOrder.value = false;
     }

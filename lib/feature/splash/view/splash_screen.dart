@@ -77,7 +77,7 @@ class _SplashScreenState extends State<SplashScreen> {
             ),
             SizedBox(height: 20.h),
             Text(
-              'KMS',
+              'KSMS',
               style: interBold.copyWith(
                 fontSize: 24.sp,
                 color: AppColor.darkColor,

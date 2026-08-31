@@ -6,6 +6,8 @@ import '../../feature/admin/view/admin_shell_screen.dart';
 import '../../feature/auth/binding/auth_binding.dart';
 import '../../feature/auth/view/login_screen.dart';
 import '../../feature/home/view/home_screen.dart';
+import '../../feature/orders/binding/orders_binding.dart';
+import '../../feature/orders/view/orders_shell_screen.dart';
 import '../../feature/splash/view/splash_screen.dart';
 import 'app_pages.dart';
 
@@ -34,6 +36,12 @@ class AppPages {
       page: () => const HomeScreen(),
       transition: Transition.native,
       transitionDuration: const Duration(milliseconds: 300),
+    ),
+    GetPage(
+      name: Routes.myOrders,
+      page: () => const OrdersShellScreen(),
+      transition: Transition.native,
+      binding: OrdersBinding(),
     ),
     GetPage(
       name: Routes.adminShell,

@@ -2,7 +2,6 @@ import 'dart:developer';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -25,9 +24,19 @@ class AuthController extends GetxController {
   final UserRepository _userRepository;
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 
-  /// The login screen collects this before the Google sheet opens, so it can
-  /// be written together with the profile on first sign-in.
-  final designationController = TextEditingController();
+
+  static const List<String> designations = [
+    'Mobile App Dev',
+    'PHP Dev (SPRO)',
+    'PHP Dev (CRM)',
+    'Dot Net Dev',
+    'AI Dev',
+    'UI/UX Designer',
+  ];
+
+  /// Collected before the Google sheet opens, so it can be written together
+  /// with the profile on first sign-in.
+  final designation = RxnString();
 
   final isLoading = false.obs;
   final appUser = Rxn<AppUser>();
@@ -40,16 +49,9 @@ class AuthController extends GetxController {
     initGoogleSignIn();
   }
 
-  @override
-  void onClose() {
-    designationController.dispose();
-    super.onClose();
-  }
+  void selectDesignation(String? value) => designation.value = value;
 
-  /// v7 of google_sign_in requires an explicit initialize() before any
-  /// authenticate() call. Android reads the app from google-services.json but
-  /// still needs the *web* client id as serverClientId to mint an ID token;
-  /// iOS needs its own client id.
+
   Future<void> initGoogleSignIn() async {
     if (_googleReady) return;
     try {
@@ -68,9 +70,9 @@ class AuthController extends GetxController {
   Future<void> signInWithGoogle() async {
     if (isLoading.value) return;
 
-    final designation = designationController.text.trim();
-    if (designation.isEmpty) {
-      showCustomToast('Enter your designation first');
+    final role = designation.value;
+    if (role == null || role.isEmpty) {
+      showCustomToast('Choose your designation first');
       return;
     }
 
@@ -112,7 +114,7 @@ class AuthController extends GetxController {
           name: firebaseUser.displayName ?? account.displayName,
           email: firebaseUser.email ?? account.email,
           photoUrl: firebaseUser.photoURL ?? account.photoUrl,
-          designation: designation,
+          designation: role,
         ),
       );
 

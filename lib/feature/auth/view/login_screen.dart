@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:kms/core/utils/app_image.dart';
 
 import '../controller/auth_controller.dart';
 
@@ -43,7 +44,7 @@ class LoginScreen extends StatelessWidget {
                     child: Padding(
                       padding: EdgeInsets.all(18.0.w),
                       child: Image.asset(
-                        'assets/images/Splash.png',
+                        AppImage.bgSplash,
                         fit: BoxFit.contain,
                         errorBuilder: (c, e, s) => Center(
                           child: Icon(
@@ -88,7 +89,7 @@ class LoginScreen extends StatelessWidget {
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Enter your Designation',
+                  'Choose your Designation',
                   style: GoogleFonts.openSans(
                     fontSize: 14.sp,
                     fontWeight: FontWeight.w600,
@@ -99,46 +100,69 @@ class LoginScreen extends StatelessWidget {
 
               SizedBox(height: 12.h),
 
-              // Text field
-              TextField(
-                controller: controller.designationController,
-                textInputAction: TextInputAction.done,
-                textCapitalization: TextCapitalization.words,
-                onSubmitted: (_) => controller.signInWithGoogle(),
-                decoration: InputDecoration(
-                  hintText: 'e.g. UI UX Designer',
-                  hintStyle: GoogleFonts.openSans(
-                    color: const Color(0xFF9AA49A),
-                    fontSize: 16.sp,
-                  ),
-                  prefixIcon: const Icon(
-                    Icons.person_outline,
+              // A picker, not a text field.
+              //
+              // Free text let everyone spell the same role differently, which
+              // the leaderboard and the admin lists then showed as separate
+              // people. It also kept a keyboard in the sign-in flow, and the
+              // caret callback of a field being torn down while the keyboard
+              // animated was what threw the `attached` assertion.
+              Obx(
+                () => DropdownButtonFormField<String>(
+                  initialValue: controller.designation.value,
+                  isExpanded: true,
+                  icon: const Icon(
+                    Icons.keyboard_arrow_down,
                     color: Color(0xFF3A4F42),
                   ),
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: EdgeInsets.symmetric(
-                    vertical: 18.h,
-                    horizontal: 16.w,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.r),
-                    borderSide: BorderSide(
-                      color: const Color(0xFFBFD6C6).withValues(alpha: 0.7),
-                      width: 1.2.w,
+                  hint: Text(
+                    'Select your role',
+                    style: GoogleFonts.openSans(
+                      color: const Color(0xFF9AA49A),
+                      fontSize: 16.sp,
                     ),
                   ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.r),
-                    borderSide: BorderSide(
-                      color: const Color(0xFFBFD6C6).withValues(alpha: 0.7),
-                      width: 1.2.w,
+                  items: AuthController.designations
+                      .map(
+                        (role) => DropdownMenuItem<String>(
+                          value: role,
+                          child: Text(
+                            role,
+                            style: GoogleFonts.openSans(
+                              fontSize: 16.sp,
+                              color: const Color(0xFF23332B),
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: controller.selectDesignation,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(
+                      Icons.person_outline,
+                      color: Color(0xFF3A4F42),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: EdgeInsets.symmetric(
+                      vertical: 18.h,
+                      horizontal: 24.w,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.r),
+                      borderSide: BorderSide(
+                        color: const Color(0xFFBFD6C6).withValues(alpha: 0.7),
+                        width: 1.2.w,
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.r),
+                      borderSide: BorderSide(
+                        color: const Color(0xFFBFD6C6).withValues(alpha: 0.7),
+                        width: 1.2.w,
+                      ),
                     ),
                   ),
-                ),
-                style: GoogleFonts.openSans(
-                  fontSize: 16.sp,
-                  color: const Color(0xFF23332B),
                 ),
               ),
 

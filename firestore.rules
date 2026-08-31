@@ -20,26 +20,54 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/config/admin).data.code;
     }
 
+    // The shop day, as yyyyMMdd, in Bangladesh time.
+    //
+    // request.time is UTC and Bangladesh is a fixed UTC+6 with no DST, so a
+    // six-hour shift converts it exactly. Without this, everything ordered
+    // before 6am local would be filed under the previous day.
+    function bdNow() {
+      return request.time + duration.value(6, 'h');
+    }
+
+    function todayKey() {
+      return bdNow().year() * 10000 + bdNow().month() * 100 + bdNow().day();
+    }
+
+    // Fail OPEN when settings/ordering is missing.
+    //
+    // Deliberate: the failure mode of fail-closed is an office where nobody can
+    // order and nobody can see why. Only an admin can write this document, so a
+    // user cannot delete it to force the shop open.
+    function orderingOpen() {
+      return !exists(/databases/$(database)/documents/settings/ordering)
+             || get(/databases/$(database)/documents/settings/ordering).data.is_open == true;
+    }
+
     // ------------------------------------------------------------ config
     //
     // Holds the admin secret. Closed to every client in both directions - the
-    // only thing that ever reads it is adminCode() above. Create the document
-    // by hand in the console:
-    //
-    //     config/admin  ->  { code: "sajjad-vai" }
+    // only thing that ever reads it is adminCode() above. Create it by hand in
+    // the console:  config/admin  ->  { code: "sajjad-vai" }
     match /config/{document} {
       allow read, write: if false;
+    }
+
+    // ---------------------------------------------------------- settings
+    //
+    // Shop-wide switches every client must be able to read. Kept apart from
+    // `config` so the admin secret stays unreadable while this stays public.
+    //
+    //   settings/ordering  ->  { is_open: true }
+    match /settings/{document} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
     }
 
     // ------------------------------------------------------------ admins
     //
     // Unlocking is a self-write whose `code` field must match config/admin.
-    // A wrong code fails as permission-denied, and because the comparison
-    // happens here, the secret never ships in the app and cannot be read out
-    // of Firestore by a client.
-    //
-    // Only create is allowed: an admin cannot rewrite the record afterwards,
-    // and revoking access means deleting the document from the console.
+    // Because the comparison happens here, the secret never ships in the app
+    // and cannot be read out of Firestore by a client.
     match /admins/{userId} {
       allow read: if signedIn() && request.auth.uid == userId;
       allow create: if signedIn()
@@ -51,13 +79,10 @@ service cloud.firestore {
     // ------------------------------------------------------------- users
     match /users/{userId} {
       allow read, write: if signedIn() && request.auth.uid == userId;
-      // Admins read profiles but never write them.
       allow read: if isAdmin();
     }
 
     // ---------------------------------------------------------- products
-    //
-    // Everyone signed in reads the catalogue; only admins change it.
     match /products/{productId} {
       allow read: if signedIn();
       allow write: if isAdmin();
@@ -65,19 +90,38 @@ service cloud.firestore {
 
     // ------------------------------------------------------------ orders
     //
-    // `create` checks request.resource (the incoming document) so nobody can
-    // file an order under someone else's uid.
+    // One order per person per shop day, enforced by the document id:
+    //   orders/{uid}_{yyyyMMdd}
     //
-    // A customer can read their own orders but never edit one: marking cash as
-    // collected is an admin action, and the update rule pins it to the payment
-    // fields so an admin cannot quietly rewrite the items or the total.
+    // Pinning the id to the caller's uid and to the server's own date is what
+    // makes "one a day" real rather than a UI convention - a second order is a
+    // write to the same document, and a back-dated id is rejected outright.
     match /orders/{orderId} {
+
       allow create: if signedIn()
-                    && request.resource.data.user_id == request.auth.uid;
+                    && orderingOpen()
+                    && request.resource.data.user_id == request.auth.uid
+                    && request.resource.data.order_date == todayKey()
+                    && orderId == request.auth.uid + '_' + string(todayKey())
+                    // Nobody marks their own order paid.
+                    && request.resource.data.payment_status == 'pending';
 
       allow read: if isAdmin()
                   || (signedIn() && resource.data.user_id == request.auth.uid);
 
+      // The owner may change the basket, and only the basket - while the shop
+      // is open and before the cash has been collected. Editing after payment
+      // would put the collected total and the order out of step.
+      allow update: if signedIn()
+                    && resource.data.user_id == request.auth.uid
+                    && orderingOpen()
+                    && resource.data.payment_status == 'pending'
+                    && request.resource.data.diff(resource.data)
+                         .affectedKeys()
+                         .hasOnly(['items', 'item_count', 'total', 'updated_at']);
+
+      // An admin may move money, and only money. Not the items, not the total -
+      // so an admin cannot quietly rewrite what someone ordered.
       allow update: if isAdmin()
                     && request.resource.data.diff(resource.data)
                          .affectedKeys()

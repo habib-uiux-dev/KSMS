@@ -9,6 +9,8 @@ import '../../admin/controller/admin_controller.dart';
 import '../../auth/controller/auth_controller.dart';
 import '../controller/home_controller.dart';
 import '../../../core/widgets/show_custom_toast.dart';
+import '../widget/app_drawer.dart';
+import '../widget/order_review_sheet.dart';
 import 'widgets/product_card.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -20,6 +22,15 @@ class HomeScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FA),
+      endDrawer: AppDrawer(
+        onAdminTap: () {
+          final admin = Get.find<AdminController>();
+          admin.isAdmin.value
+              ? Get.toNamed(Routes.adminShell)
+              : _askForAdminCode(context);
+        },
+        onSignOutTap: () => _confirmSignOut(context),
+      ),
 
       // ================= APP BAR =================
       appBar: AppBar(
@@ -73,32 +84,23 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
 
-            // Admin: opens the dashboard once unlocked, asks for the code
-            // before that. Deliberately looks the same either way, so the
-            // button does not advertise who is an admin.
-            Obx(() {
-              final admin = Get.find<AdminController>();
-              return IconButton(
-                onPressed: () => admin.isAdmin.value
-                    ? Get.toNamed(Routes.adminShell)
-                    : _askForAdminCode(context),
-                icon: Icon(
-                  admin.isAdmin.value
-                      ? Icons.admin_panel_settings
-                      : Icons.admin_panel_settings_outlined,
-                  color: Colors.white,
-                ),
-                tooltip: admin.isAdmin.value ? 'Admin' : 'Admin access',
-              );
-            }),
-
-            IconButton(
-              onPressed: () => _confirmSignOut(context),
-              icon: const Icon(Icons.logout, color: Colors.white),
-              tooltip: 'Sign out',
-            ),
           ],
         ),
+
+        // Must live here, not inside `title`: an AppBar with an end drawer and
+        // no actions inserts a menu button of its own, which is where the
+        // second icon came from - and it takes its colour from the theme, not
+        // from us.
+        actions: [
+          Builder(
+            builder: (context) => IconButton(
+              onPressed: Scaffold.of(context).openEndDrawer,
+              icon: const Icon(Icons.menu, color: Colors.white),
+              tooltip: 'Menu',
+            ),
+          ),
+          SizedBox(width: 4.w),
+        ],
       ),
 
       // ================= BODY =================
@@ -312,6 +314,37 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
+/// Shows the basket back to the user before it is sent.
+///
+/// The button stays tappable when the shop is closed or the order is locked -
+/// that is deliberate, because a dead button explains nothing. Those cases are
+/// handed straight to [HomeController.placeOrder], which owns the wording; a
+/// review sheet for an order that cannot go anywhere would only confuse.
+Future<void> _reviewThenPlace(
+  BuildContext context,
+  HomeController controller,
+) async {
+  final items = controller.cartItems;
+  if (!controller.orderingOpen.value ||
+      controller.isOrderLocked ||
+      items.isEmpty) {
+    return controller.placeOrder();
+  }
+
+  final byId = {for (final p in controller.products) p.id: p};
+
+  final confirmed = await showOrderReviewSheet(
+    context,
+    items: items,
+    total: controller.totalAmount,
+    isEditing: controller.isEditingOrder,
+    imageUrlFor: (productId) => byId[productId]?.imageUrl,
+  );
+
+  if (!confirmed) return;
+  await controller.placeOrder();
+}
+
 // ============================================================
 // QUICK ORDER BUTTON
 // ============================================================
@@ -508,14 +541,24 @@ class _OrderSummaryBar extends StatelessWidget {
 
                   SizedBox(height: 4.h),
 
-                  Obx(
-                    () => Text(
-                      '${controller.itemCount} items selected',
+                  Obx(() {
+                    final text = !controller.orderingOpen.value
+                        ? 'Ordering is closed'
+                        : controller.isOrderLocked
+                        ? 'Payment collected'
+                        : controller.isEditingOrder
+                        ? '${controller.itemCount} items · already ordered'
+                        : '${controller.itemCount} items selected';
+
+                    return Text(
+                      text,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.openSans(
                         color: const Color(0xFF6E7A74),
                       ),
-                    ),
-                  ),
+                    );
+                  }),
                 ],
               ),
             ),
@@ -552,14 +595,35 @@ class _OrderSummaryBar extends StatelessWidget {
               height: 50.h,
               child: Obx(() {
                 final isBusy = controller.isPlacingOrder.value;
-                // Deep green once there is something to order, the muted
-                // shade while the cart is empty.
-                final isEnabled = controller.itemCount > 0 && !isBusy;
+                final isOpen = controller.orderingOpen.value;
+                final isLocked = controller.isOrderLocked;
+                final isEditing = controller.isEditingOrder;
+
+                // While the shop is closed the button stays tappable on
+                // purpose: a disabled button explains nothing, and the whole
+                // point is to tell the user to contact the admin.
+                final isEnabled =
+                    !isBusy &&
+                    (!isOpen || (controller.itemCount > 0 && !isLocked));
+
+                final label = isBusy
+                    ? (isEditing ? 'Updating...' : 'Placing...')
+                    : !isOpen
+                    ? 'Orders Closed'
+                    : isLocked
+                    ? 'Paid'
+                    : isEditing
+                    ? 'Edit Order'
+                    : 'Place Order';
 
                 return ElevatedButton(
-                  onPressed: isEnabled ? controller.placeOrder : null,
+                  onPressed: isEnabled
+                      ? () => _reviewThenPlace(context, controller)
+                      : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF116A2A),
+                    backgroundColor: isOpen
+                        ? const Color(0xFF116A2A)
+                        : const Color(0xFFB45309),
                     disabledBackgroundColor: const Color(0xFF86C8A2),
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -573,7 +637,7 @@ class _OrderSummaryBar extends StatelessWidget {
                       SizedBox(width: 4.w),
 
                       Text(
-                        isBusy ? 'Placing...' : 'Place Order',
+                        label,
                         style: GoogleFonts.openSans(
                           fontSize: 16.sp,
                           fontWeight: FontWeight.w700,

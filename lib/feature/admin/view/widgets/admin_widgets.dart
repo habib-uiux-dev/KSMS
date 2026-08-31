@@ -18,6 +18,9 @@ class AdminColors {
   static const ink = Color(0xFF0F2540);
   static const muted = Color(0xFF6E7A74);
   static const line = Color(0xFFE6E9EF);
+
+  /// Destructive actions - delete, and nothing else.
+  static const red = Color(0xFFEF4C4C);
 }
 
 /// One of the four numbers at the top of the admin home screen.
@@ -100,9 +103,19 @@ class StatCard extends StatelessWidget {
 
 /// The tinted lines-and-total block inside an order card.
 class OrderItemsTable extends StatelessWidget {
-  const OrderItemsTable({super.key, required this.order});
+  const OrderItemsTable({
+    super.key,
+    required this.order,
+    this.onQuantityChanged,
+    this.isBusy = false,
+  });
 
   final ShopOrder order;
+
+  /// When supplied, each line gains -/+ controls. Left null on read-only
+  /// surfaces (the summary tab), so the same table serves both.
+  final void Function(String productId, int delta)? onQuantityChanged;
+  final bool isBusy;
 
   @override
   Widget build(BuildContext context) {
@@ -127,10 +140,45 @@ class OrderItemsTable extends StatelessWidget {
                       style: GoogleFonts.openSans(color: AdminColors.ink),
                     ),
                   ),
-                  Text(
-                    '৳${item.price} × ${item.quantity}',
-                    style: GoogleFonts.openSans(color: AdminColors.muted),
-                  ),
+                  if (onQuantityChanged == null)
+                    Text(
+                      '৳${item.price} × ${item.quantity}',
+                      style: GoogleFonts.openSans(color: AdminColors.muted),
+                    )
+                  else ...[
+                    _StepButton(
+                      icon: Icons.remove,
+                      onTap: isBusy
+                          ? null
+                          : () => onQuantityChanged!(item.productId, -1),
+                    ),
+                    SizedBox(
+                      width: 34.w,
+                      child: Text(
+                        '${item.quantity}',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.openSans(
+                          fontWeight: FontWeight.w700,
+                          color: AdminColors.ink,
+                        ),
+                      ),
+                    ),
+                    _StepButton(
+                      icon: Icons.add,
+                      onTap: isBusy
+                          ? null
+                          : () => onQuantityChanged!(item.productId, 1),
+                    ),
+                    SizedBox(width: 8.w),
+                    SizedBox(
+                      width: 46.w,
+                      child: Text(
+                        '৳${item.lineTotal}',
+                        textAlign: TextAlign.end,
+                        style: GoogleFonts.openSans(color: AdminColors.muted),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -282,6 +330,39 @@ class AdminEmpty extends StatelessWidget {
               style: GoogleFonts.openSans(color: AdminColors.muted),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Small square -/+ used by [OrderItemsTable] when it is editable.
+class _StepButton extends StatelessWidget {
+  const _StepButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(6.r),
+      onTap: onTap,
+      child: Container(
+        width: 28.w,
+        height: 28.w,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(6.r),
+          border: Border.all(color: AdminColors.line),
+        ),
+        child: Icon(
+          icon,
+          size: 16.sp,
+          color: enabled ? AdminColors.ink : AdminColors.muted,
         ),
       ),
     );
