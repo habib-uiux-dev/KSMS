@@ -1,10 +1,16 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
+import 'package:kms/core/services/notifications/awesome_notification_service.dart';
+import 'package:kms/core/services/notifications/notification_service.dart';
+import 'package:kms/firebase_options.dart';
 
 import 'core/bindings/initial_binding.dart';
 import 'core/routes/app_pages.dart';
@@ -19,10 +25,14 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  await NotificationService.initialize();
+  await AwesomeNotificationService.initialize();
   // No options passed: Android reads android/app/google-services.json and iOS
   // reads ios/Runner/GoogleService-Info.plist. Must finish before runApp so
   // the splash screen can read FirebaseAuth.currentUser synchronously.
-  await Firebase.initializeApp();
+  // await Firebase.initializeApp();
 
   await GetStorage.init();
   await SessionManager.init();

@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "230061925255-odg2aali7ujfce5vbbja0d5d0ffdmeh6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kms.app",
+            "certificate_hash": "b6472a0e0453fbb5d8124ad2e8c9256c569d6260"
+          }
+        },
+        {
           "client_id": "230061925255-uu6or8klhg433mtv5caltkmqrjhg1lb2.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

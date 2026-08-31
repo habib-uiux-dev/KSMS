@@ -54,9 +54,14 @@ dependencies:
 
   # Auth + database (Firebase only – there is no app backend)
   firebase_core: ^4.2.0
+  firebase_messaging: ^16.0.0
   firebase_auth: ^6.1.2
   cloud_firestore: ^6.0.4
   google_sign_in: ^7.2.0
+  awesome_notifications: ^0.12.1
+  connectivity_plus: ^6.1.4
+
+
 
   # Local key-value storage (session, theme choice)
   get_storage: ^2.1.1
