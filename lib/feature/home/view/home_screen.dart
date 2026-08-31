@@ -109,6 +109,9 @@ class HomeScreen extends StatelessWidget {
           children: [
             SizedBox(height: 12.h),
 
+            // ================= CANCELLED ORDER NOTICE =================
+            const _CancelledNotice(),
+
             // ================= SMOKE & TEA BUTTON =================
             /*Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.w),
@@ -331,16 +334,9 @@ Future<void> _reviewThenPlace(
     return controller.placeOrder();
   }
 
-  final byId = {for (final p in controller.products) p.id: p};
-
-  final confirmed = await showOrderReviewSheet(
-    context,
-    items: items,
-    total: controller.totalAmount,
-    isEditing: controller.isEditingOrder,
-    imageUrlFor: (productId) => byId[productId]?.imageUrl,
-  );
-
+  // The sheet reads the controller itself, so quantities changed in there are
+  // already in the cart by the time this returns.
+  final confirmed = await showOrderReviewSheet(context);
   if (!confirmed) return;
   await controller.placeOrder();
 }
@@ -402,6 +398,92 @@ class _QuickButton extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+// ============================================================
+// CANCELLED ORDER NOTICE
+// ============================================================
+
+/// Tells someone their order was cancelled, on the screen they are already on.
+///
+/// This is the whole answer to "the user never finds out". The order stream is
+/// live, so an admin cancelling downstairs makes this appear within a second,
+/// with no push notification and no Cloud Function - both of which this
+/// project would otherwise need, and neither of which it has.
+class _CancelledNotice extends StatelessWidget {
+  const _CancelledNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = Get.find<HomeController>();
+
+    return Obx(() {
+      final order = controller.cancelledOrder;
+      if (order == null) return const SizedBox.shrink();
+
+      final reason = order.cancelReason;
+
+      return Container(
+        margin: EdgeInsets.fromLTRB(16.w, 0, 16.w, 12.h),
+        padding: EdgeInsets.fromLTRB(14.w, 12.h, 6.w, 12.h),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFDECEC),
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(color: const Color(0xFFEF4C4C).withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.cancel_outlined,
+              size: 20.sp,
+              color: const Color(0xFFC62828),
+            ),
+            SizedBox(width: 10.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'আপনার আজকের অর্ডারটি বাতিল করা হয়েছে',
+                    style: GoogleFonts.openSans(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFFC62828),
+                    ),
+                  ),
+                  SizedBox(height: 2.h),
+                  Text(
+                    // The reason is what turns this from an accusation into
+                    // information, so it leads - and when there is none, the
+                    // line says what to do instead of trailing off.
+                    reason.isNotEmpty
+                        ? '$reason · আবার অর্ডার করতে পারেন'
+                        : 'আপনি আবার অর্ডার করতে পারেন',
+                    style: GoogleFonts.openSans(
+                      fontSize: 12.sp,
+                      color: const Color(0xFF8A3B3B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: controller.dismissCancelNotice,
+              icon: Icon(
+                Icons.close,
+                size: 18.sp,
+                color: const Color(0xFF8A3B3B),
+              ),
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Dismiss',
+            ),
+          ],
+        ),
+      );
+    });
   }
 }
 

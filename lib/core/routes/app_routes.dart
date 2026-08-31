@@ -4,6 +4,7 @@ import '../../feature/admin/binding/admin_binding.dart';
 import '../../feature/admin/view/admin_product_form_screen.dart';
 import '../../feature/admin/view/admin_shell_screen.dart';
 import '../../feature/auth/binding/auth_binding.dart';
+import '../../feature/auth/view/designation_screen.dart';
 import '../../feature/auth/view/login_screen.dart';
 import '../../feature/home/view/home_screen.dart';
 import '../../feature/orders/binding/orders_binding.dart';
@@ -29,6 +30,13 @@ class AppPages {
       transition: Transition.native,
       transitionDuration: const Duration(milliseconds: 300),
       // AuthController is built here, so LoginScreen can Get.find it.
+      binding: AuthBinding(),
+    ),
+    GetPage(
+      name: Routes.designation,
+      page: () => const DesignationScreen(),
+      transition: Transition.native,
+      // Reached from splash too, where AuthController may not exist yet.
       binding: AuthBinding(),
     ),
     GetPage(

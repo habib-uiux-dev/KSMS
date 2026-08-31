@@ -66,8 +66,12 @@ class AppUser {
     'last_login_at': FieldValue.serverTimestamp(),
   };
 
+  /// Note what is missing: `name`.
+  ///
+  /// It is set once, on create, from the Google account. After that the person
+  /// owns it - they can edit it in the app, and a later sign-in must not
+  /// silently put the Google display name back.
   Map<String, dynamic> toUpdateMap() => {
-    if (name != null) 'name': name,
     if (email != null) 'email': email,
     if (photoUrl != null) 'photo_url': photoUrl,
     if (designation != null) 'designation': designation,

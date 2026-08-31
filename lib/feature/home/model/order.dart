@@ -64,6 +64,11 @@ class OrderItem {
 
 /// Lifecycle of an order. Stored as the enum name, so renaming a value here
 /// would orphan existing documents – add, don't rename.
+///
+/// `cancelled` is what an admin does instead of deleting. A deleted order
+/// cannot be shown to the person who placed it, so "your order was cancelled"
+/// would have nothing to render - the document has to survive for the message
+/// to exist at all.
 enum OrderStatus { placed, preparing, delivered, cancelled }
 
 OrderStatus _statusFrom(String? raw) => OrderStatus.values.firstWhere(
@@ -104,6 +109,14 @@ class ShopOrder {
   final DateTime? updatedAt;
   final DateTime? collectedAt;
 
+  /// Who cancelled it, when, and why. Empty on every order that is still live.
+  ///
+  /// `cancelledBy` is the admin's uid rather than their name: names change, and
+  /// this is the only audit trail the shop has.
+  final DateTime? cancelledAt;
+  final String cancelledBy;
+  final String cancelReason;
+
   const ShopOrder({
     this.id = '',
     required this.userId,
@@ -118,9 +131,17 @@ class ShopOrder {
     this.createdAt,
     this.updatedAt,
     this.collectedAt,
+    this.cancelledAt,
+    this.cancelledBy = '',
+    this.cancelReason = '',
   });
 
   bool get isCollected => paymentStatus == PaymentStatus.collected;
+
+  /// Cancelled orders still exist, still appear in history, and still count
+  /// against "one order per day" - but they count for nothing else. Every
+  /// total in the app has to skip them.
+  bool get isCancelled => status == OrderStatus.cancelled;
 
   /// yyyyMMdd for a local date. Local, not UTC: the shop's day is the day the
   /// people in it are living, and Bangladesh is a fixed UTC+6 with no DST.
@@ -156,6 +177,9 @@ class ShopOrder {
       createdAt: (map['created_at'] as Timestamp?)?.toDate(),
       updatedAt: (map['updated_at'] as Timestamp?)?.toDate(),
       collectedAt: (map['collected_at'] as Timestamp?)?.toDate(),
+      cancelledAt: (map['cancelled_at'] as Timestamp?)?.toDate(),
+      cancelledBy: (map['cancelled_by'] as String?) ?? '',
+      cancelReason: (map['cancel_reason'] as String?) ?? '',
     );
   }
 
@@ -184,5 +208,23 @@ class ShopOrder {
     'item_count': itemCount,
     'total': total,
     'updated_at': FieldValue.serverTimestamp(),
+  };
+
+  /// Ordering again after an admin cancelled today's order.
+  ///
+  /// This has to be an update rather than a create: the document id is
+  /// `uid_yyyyMMdd`, so the cancelled order is still sitting at the address the
+  /// new one would use. Reviving it in place is what keeps one-order-per-day
+  /// true - there is never a second document to reconcile.
+  ///
+  /// The three cancellation fields are deleted, not blanked. A leftover reason
+  /// on a live order is exactly the sort of thing that resurfaces months later
+  /// in a UI that only checks `status`.
+  Map<String, dynamic> toReviveMap() => {
+    ...toUpdateMap(),
+    'status': OrderStatus.placed.name,
+    'cancelled_at': FieldValue.delete(),
+    'cancelled_by': FieldValue.delete(),
+    'cancel_reason': FieldValue.delete(),
   };
 }

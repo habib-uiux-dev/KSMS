@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:developer';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+// FirebaseException comes through firebase_auth's own re-export of
+// firebase_core, so importing cloud_firestore here as well is redundant.
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
 
 import '../../../core/services/firebase/order_repository.dart';
@@ -109,11 +111,20 @@ class AdminDashboardController extends GetxController {
 
   // --------------------------------------------------------------- totals
 
-  int get totalOrders => orders.length;
+  /// Today's orders minus the cancelled ones.
+  ///
+  /// Every number on the admin screens is built from this rather than from
+  /// `orders`, because a cancelled order is food nobody gets and cash nobody
+  /// owes. `orders` itself stays whole so the cards remain visible - an admin
+  /// needs to see what they cancelled, just not counted.
+  List<ShopOrder> get activeOrders =>
+      orders.where((o) => !o.isCancelled).toList();
 
-  int get totalAmount => orders.fold(0, (running, o) => running + o.total);
+  int get totalOrders => activeOrders.length;
 
-  int get collectedAmount => orders
+  int get totalAmount => activeOrders.fold(0, (running, o) => running + o.total);
+
+  int get collectedAmount => activeOrders
       .where((o) => o.isCollected)
       .fold(0, (running, o) => running + o.total);
 
@@ -122,7 +133,7 @@ class AdminDashboardController extends GetxController {
   int get pendingAmount => totalAmount - collectedAmount;
 
   List<ShopOrder> get pendingOrders =>
-      orders.where((o) => !o.isCollected).toList();
+      activeOrders.where((o) => !o.isCollected).toList();
 
   // -------------------------------------------------------------- summary
 
@@ -133,7 +144,7 @@ class AdminDashboardController extends GetxController {
   Map<String, Map<String, int>> get summaryByCategory {
     final result = <String, Map<String, int>>{};
 
-    for (final order in orders) {
+    for (final order in activeOrders) {
       for (final item in order.items) {
         // Order lines do not carry the category, so items are grouped by the
         // subtitle the shop already uses as a shelf label ("Hot Snack").
@@ -146,7 +157,7 @@ class AdminDashboardController extends GetxController {
     return result;
   }
 
-  int get totalPieces => orders.fold(
+  int get totalPieces => activeOrders.fold(
     0,
     (running, o) =>
         running + o.items.fold(0, (inner, item) => inner + item.quantity),
@@ -176,25 +187,54 @@ class AdminDashboardController extends GetxController {
 
   // ------------------------------------------------------- corrections
 
-  /// Removes an order for someone who changed their mind after the shop shut,
-  /// or a duplicate the shop keeper wants gone.
-  Future<void> deleteOrder(ShopOrder order) async {
+  /// The reasons the shop actually gives, offered as taps so the field is
+  /// filled in rather than skipped.
+  static const List<String> cancelReasons = [
+    'স্টক শেষ',
+    'ডুপ্লিকেট অর্ডার',
+    'ইউজার বাতিল করতে বলেছে',
+    'ভুল করে অর্ডার হয়েছে',
+  ];
+
+  /// Cancels an order for someone who changed their mind, or a duplicate.
+  ///
+  /// This replaced a delete. Deleting worked, in the sense that the row went
+  /// away - but the person who placed it was never told, their home screen
+  /// simply reset to "Place Order", and there was nothing left to explain
+  /// what had happened. A cancelled order stays where it is and says so.
+  Future<void> cancelOrder(ShopOrder order, String reason) async {
     if (order.id.isEmpty || isBusy(order.id)) return;
+
+    final adminUid = FirebaseAuth.instance.currentUser?.uid;
+    if (adminUid == null) {
+      showCustomToast('You are signed out');
+      return;
+    }
 
     busyOrderIds.add(order.id);
     try {
-      await _orderRepository.deleteOrder(order.id);
-      showCustomToast('Order deleted');
+      await _orderRepository.cancelOrder(
+        order.id,
+        adminUid: adminUid,
+        reason: reason,
+      );
+      showCustomToast('Order cancelled · ${order.userName}');
     } on FirebaseException catch (e) {
-      log('Delete order failed: ${e.code} ${e.message}');
+      log('Cancel order failed: ${e.code} ${e.message}');
       showCustomToast(
         e.code == 'permission-denied'
-            ? 'Only an admin can delete an order'
-            : 'Could not delete (${e.code})',
+            // The rule refuses to cancel an order whose cash has been taken:
+            // the money has to go back first, and that is a real step, not a
+            // technicality.
+            ? order.isCollected
+                  ? 'Undo the collection first, then cancel'
+                  : 'Only an admin can cancel an order'
+            : 'Could not cancel (${e.code})',
+        duration: 4,
       );
     } catch (e) {
-      log('Delete order failed: $e');
-      showCustomToast('Could not delete the order');
+      log('Cancel order failed: $e');
+      showCustomToast('Could not cancel the order');
     } finally {
       busyOrderIds.remove(order.id);
     }
@@ -221,7 +261,7 @@ class AdminDashboardController extends GetxController {
     }
 
     if (items.isEmpty) {
-      showCustomToast('Delete the order instead of emptying it');
+      showCustomToast('Cancel the order instead of emptying it');
       return;
     }
 

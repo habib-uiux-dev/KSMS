@@ -8,7 +8,6 @@ class AppImage {
   // SVG icons
   static const String icBack = '${assetPath}ic_back_arrow.svg';
 
-
   // Raster
   static const String bgSplash = '${assetPath}bg_splash.jpeg';
 }

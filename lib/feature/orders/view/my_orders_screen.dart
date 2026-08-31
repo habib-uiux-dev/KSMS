@@ -11,6 +11,7 @@ const Color _green = Color(0xFF116A2A);
 const Color _ink = Color(0xFF23332B);
 const Color _muted = Color(0xFF6E7A74);
 const Color _line = Color(0xFFE8ECE9);
+const Color _cancelled = Color(0xFFC62828);
 
 /// The caller's own order history, newest first, grouped by day.
 class MyOrdersScreen extends StatelessWidget {
@@ -92,29 +93,41 @@ class _OrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final placedAt = order.createdAt;
+    final cancelled = order.isCancelled;
+
+    // Greyed rather than hidden. This card is the record of what happened, and
+    // a history that quietly omits the cancelled day is how someone ends up
+    // asking the shop keeper why they were charged for nothing.
+    final bodyColor = cancelled ? _muted : _ink;
 
     return Container(
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cancelled ? const Color(0xFFF6F7F6) : Colors.white,
         borderRadius: BorderRadius.circular(14.r),
+        border: cancelled
+            ? Border.all(color: _cancelled.withValues(alpha: 0.25))
+            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Text(
-                order.isCollected ? 'Paid' : 'Order Placed',
-                style: GoogleFonts.openSans(fontSize: 13.sp, color: _muted),
-              ),
+              if (cancelled)
+                _CancelledBadge()
+              else
+                Text(
+                  order.isCollected ? 'Paid' : 'Order Placed',
+                  style: GoogleFonts.openSans(fontSize: 13.sp, color: _muted),
+                ),
               const Spacer(),
               Text(
                 placedAt == null ? '' : DateFormat('h:mm a').format(placedAt),
                 style: GoogleFonts.openSans(
                   fontSize: 15.sp,
                   fontWeight: FontWeight.w700,
-                  color: _ink,
+                  color: bodyColor,
                 ),
               ),
             ],
@@ -135,7 +148,10 @@ class _OrderCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.openSans(
                         fontSize: 14.sp,
-                        color: _ink,
+                        color: bodyColor,
+                        decoration: cancelled
+                            ? TextDecoration.lineThrough
+                            : null,
                       ),
                     ),
                   ),
@@ -143,7 +159,10 @@ class _OrderCard extends StatelessWidget {
                     '৳${item.lineTotal}',
                     style: GoogleFonts.openSans(
                       fontSize: 14.sp,
-                      color: _ink,
+                      color: bodyColor,
+                      decoration: cancelled
+                          ? TextDecoration.lineThrough
+                          : null,
                     ),
                   ),
                 ],
@@ -161,7 +180,7 @@ class _OrderCard extends StatelessWidget {
                 style: GoogleFonts.openSans(
                   fontSize: 16.sp,
                   fontWeight: FontWeight.w700,
-                  color: _ink,
+                  color: bodyColor,
                 ),
               ),
               const Spacer(),
@@ -170,12 +189,52 @@ class _OrderCard extends StatelessWidget {
                 style: GoogleFonts.openSans(
                   fontSize: 17.sp,
                   fontWeight: FontWeight.w800,
-                  color: _green,
+                  color: cancelled ? _muted : _green,
+                  decoration: cancelled ? TextDecoration.lineThrough : null,
                 ),
               ),
             ],
           ),
+
+          if (cancelled) ...[
+            SizedBox(height: 10.h),
+            Text(
+              _cancelLine(order),
+              style: GoogleFonts.openSans(fontSize: 12.sp, color: _cancelled),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+/// "Cancelled at 2:14 PM · স্টক শেষ", or just the time when no reason was left.
+String _cancelLine(ShopOrder order) {
+  final at = order.cancelledAt;
+  final when = at == null ? '' : ' at ${DateFormat('h:mm a').format(at)}';
+  final reason = order.cancelReason;
+  return reason.isEmpty
+      ? 'Cancelled by the shop$when'
+      : 'Cancelled by the shop$when · $reason';
+}
+
+class _CancelledBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+      decoration: BoxDecoration(
+        color: _cancelled.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6.r),
+      ),
+      child: Text(
+        'Cancelled',
+        style: GoogleFonts.openSans(
+          fontSize: 12.sp,
+          fontWeight: FontWeight.w700,
+          color: _cancelled,
+        ),
       ),
     );
   }

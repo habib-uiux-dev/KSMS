@@ -51,6 +51,45 @@ class AuthController extends GetxController {
 
   void selectDesignation(String? value) => designation.value = value;
 
+  /// True when the account has no role stored yet - the only time the picker
+  /// is shown.
+  static bool needsDesignation(AppUser? user) =>
+      user == null || (user.designation ?? '').trim().isEmpty;
+
+  /// Saves the onboarding answer and moves on. Returns nothing: failures are
+  /// reported by toast and leave the user on the step to retry.
+  Future<void> submitDesignation() async {
+    if (isLoading.value) return;
+
+    final role = designation.value;
+    if (role == null || role.isEmpty) {
+      showCustomToast('Choose your designation first');
+      return;
+    }
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      showCustomToast('You are signed out');
+      const ScreenTransition(routeName: Routes.login, replace: true).navigate();
+      return;
+    }
+
+    isLoading.value = true;
+    try {
+      await _userRepository.updateDesignation(uid, role);
+      appUser.value = await _userRepository.fetchUser(uid);
+      const ScreenTransition(routeName: Routes.home, replace: true).navigate();
+    } on FirebaseException catch (e) {
+      log('Save designation failed: ${e.code} ${e.message}');
+      showCustomToast('Could not save (${e.code})');
+    } catch (e) {
+      log('Save designation failed: $e');
+      showCustomToast('Could not save your designation');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
 
   Future<void> initGoogleSignIn() async {
     if (_googleReady) return;
@@ -69,12 +108,6 @@ class AuthController extends GetxController {
 
   Future<void> signInWithGoogle() async {
     if (isLoading.value) return;
-
-    final role = designation.value;
-    if (role == null || role.isEmpty) {
-      showCustomToast('Choose your designation first');
-      return;
-    }
 
     isLoading.value = true;
     try {
@@ -114,12 +147,20 @@ class AuthController extends GetxController {
           name: firebaseUser.displayName ?? account.displayName,
           email: firebaseUser.email ?? account.email,
           photoUrl: firebaseUser.photoURL ?? account.photoUrl,
-          designation: role,
         ),
       );
 
       SessionManager.setValue(kIsLogin, true);
-      const ScreenTransition(routeName: Routes.home, replace: true).navigate();
+
+      // The role is asked for once, and only when the profile hasn't got one.
+      // Reading it back from the document rather than from local storage is
+      // what makes it survive a reinstall: the answer lives with the account.
+      ScreenTransition(
+        routeName: needsDesignation(appUser.value)
+            ? Routes.designation
+            : Routes.home,
+        replace: true,
+      ).navigate();
     } on GoogleSignInException catch (e) {
       // A cancel is a normal outcome, not an error worth a toast.
       if (e.code != GoogleSignInExceptionCode.canceled) {

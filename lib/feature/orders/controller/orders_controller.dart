@@ -169,6 +169,11 @@ class OrdersController extends GetxController {
       final id = order.userId;
       if (id.isEmpty) continue;
 
+      // A cancelled order was never eaten and never paid for. Counting it
+      // would put somebody at the top of the board for food they did not get,
+      // and no total in the app would agree with any other.
+      if (order.isCancelled) continue;
+
       items[id] = (items[id] ?? 0) + order.itemCount;
       spent[id] = (spent[id] ?? 0) + order.total;
       if (order.userName.isNotEmpty) names[id] = order.userName;

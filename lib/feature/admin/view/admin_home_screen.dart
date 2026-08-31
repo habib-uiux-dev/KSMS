@@ -236,14 +236,22 @@ class _AdminOrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = Get.find<AdminDashboardController>();
+    final cancelled = order.isCancelled;
 
     return Container(
       margin: EdgeInsets.only(bottom: 14.h),
       padding: EdgeInsets.all(14.w),
       decoration: BoxDecoration(
-        color: Colors.white,
+        // Still on screen, visibly struck out. An admin who cancels an order
+        // needs to see that they did - a card that disappeared was how the
+        // old delete button lost the shop its own history.
+        color: cancelled ? const Color(0xFFF6F7F6) : Colors.white,
         borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: AdminColors.line),
+        border: Border.all(
+          color: cancelled
+              ? AdminColors.red.withValues(alpha: 0.3)
+              : AdminColors.line,
+        ),
       ),
       child: Column(
         children: [
@@ -252,22 +260,26 @@ class _AdminOrderCard extends StatelessWidget {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                PaymentBadge(collected: order.isCollected),
-                SizedBox(width: 4.w),
-                Obx(
-                  () => IconButton(
-                    onPressed: controller.isBusy(order.id)
-                        ? null
-                        : () => _confirmDelete(context, controller, order),
-                    icon: Icon(
-                      Icons.delete_outline,
-                      size: 20.sp,
-                      color: AdminColors.red,
+                if (cancelled)
+                  _CancelledChip()
+                else ...[
+                  PaymentBadge(collected: order.isCollected),
+                  SizedBox(width: 4.w),
+                  Obx(
+                    () => IconButton(
+                      onPressed: controller.isBusy(order.id)
+                          ? null
+                          : () => _confirmCancel(context, controller, order),
+                      icon: Icon(
+                        Icons.cancel_outlined,
+                        size: 20.sp,
+                        color: AdminColors.red,
+                      ),
+                      tooltip: 'Cancel order',
+                      visualDensity: VisualDensity.compact,
                     ),
-                    tooltip: 'Delete order',
-                    visualDensity: VisualDensity.compact,
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -276,12 +288,13 @@ class _AdminOrderCard extends StatelessWidget {
 
           // Editable only while the cash is still owed: once it is collected
           // the total has been paid against, and changing the lines would put
-          // the takings and the order out of step.
+          // the takings and the order out of step. A cancelled order is not
+          // editable at all - there is nothing left to correct.
           Obx(
             () => OrderItemsTable(
               order: order,
               isBusy: controller.isBusy(order.id),
-              onQuantityChanged: order.isCollected
+              onQuantityChanged: order.isCollected || cancelled
                   ? null
                   : (productId, delta) =>
                         controller.changeQuantity(order, productId, delta),
@@ -292,6 +305,23 @@ class _AdminOrderCard extends StatelessWidget {
 
           Obx(() {
             final busy = controller.isBusy(order.id);
+
+            if (cancelled) {
+              // No action button: the user re-orders from their own phone,
+              // which is also the only path the security rules allow.
+              return Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  order.cancelReason.isEmpty
+                      ? 'Cancelled · they can order again'
+                      : 'Cancelled · ${order.cancelReason}',
+                  style: GoogleFonts.openSans(
+                    fontSize: 12.sp,
+                    color: AdminColors.red,
+                  ),
+                ),
+              );
+            }
 
             if (order.isCollected) {
               // Already paid: offer the undo instead of a dead button, since a
@@ -359,39 +389,96 @@ class _AdminOrderCard extends StatelessWidget {
   }
 }
 
-Future<void> _confirmDelete(
+/// Small chip in place of the payment badge once an order is struck out.
+class _CancelledChip extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+      decoration: BoxDecoration(
+        color: AdminColors.red.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6.r),
+      ),
+      child: Text(
+        'Cancelled',
+        style: GoogleFonts.openSans(
+          fontSize: 12.sp,
+          fontWeight: FontWeight.w700,
+          color: AdminColors.red,
+        ),
+      ),
+    );
+  }
+}
+
+/// Asks which reason, not whether.
+///
+/// The reason is not optional garnish: it is the sentence the person who
+/// ordered will read on their home screen. "Your order was cancelled" with no
+/// explanation is worse than the old silent delete, because it says something
+/// happened and refuses to say what.
+Future<void> _confirmCancel(
   BuildContext context,
   AdminDashboardController controller,
   ShopOrder order,
 ) async {
-  final confirmed = await showDialog<bool>(
+  final reason = await showDialog<String>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => SimpleDialog(
       title: Text(
-        'Delete this order?',
-        style: GoogleFonts.openSans(fontWeight: FontWeight.w700),
-      ),
-      content: Text(
-        'Removing the order by ${order.userName} - ${order.itemCount} '
-        'item${order.itemCount == 1 ? '' : 's'}, total ৳${order.total}. '
-        'They can place a new one while the shop is open.',
-        style: GoogleFonts.openSans(),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: Text('Cancel', style: GoogleFonts.openSans()),
+        'Cancel ${order.userName}’s order?',
+        style: GoogleFonts.openSans(
+          fontWeight: FontWeight.w700,
+          fontSize: 17.sp,
         ),
-        TextButton(
-          onPressed: () => Navigator.pop(context, true),
+      ),
+      contentPadding: EdgeInsets.only(bottom: 8.h),
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(24.w, 0, 24.w, 12.h),
           child: Text(
-            'Delete',
-            style: GoogleFonts.openSans(color: AdminColors.red),
+            '${order.itemCount} item${order.itemCount == 1 ? '' : 's'}, '
+            '৳${order.total}. They will see the reason on their home screen '
+            'and can order again.',
+            style: GoogleFonts.openSans(
+              fontSize: 13.sp,
+              color: AdminColors.muted,
+            ),
+          ),
+        ),
+        for (final option in AdminDashboardController.cancelReasons)
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, option),
+            padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+            child: Row(
+              children: [
+                Icon(Icons.arrow_right, size: 18.sp, color: AdminColors.muted),
+                SizedBox(width: 6.w),
+                Expanded(
+                  child: Text(
+                    option,
+                    style: GoogleFonts.openSans(
+                      fontSize: 15.sp,
+                      color: AdminColors.ink,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        Padding(
+          padding: EdgeInsets.only(right: 12.w, top: 4.h),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Keep the order', style: GoogleFonts.openSans()),
+            ),
           ),
         ),
       ],
     ),
   );
 
-  if (confirmed == true) await controller.deleteOrder(order);
+  if (reason != null) await controller.cancelOrder(order, reason);
 }
