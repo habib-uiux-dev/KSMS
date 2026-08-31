@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# The FCM sender key. It ships inside the APK, which is bad enough - it does
+# not also need to be in the history of a repo that may be shared later.
+# The .example next to it says where to download a replacement.
+assets/secrets/fcm_service_account.json
+/pubspec.lock

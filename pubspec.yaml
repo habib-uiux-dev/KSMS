@@ -51,6 +51,11 @@ dependencies:
 
   # Networking
   dio: ^5.4.0
+  http: ^1.2.0
+
+  # Signs the FCM send request with a service account. Only the admin
+  # notification screen uses this - see lib/core/services/notifications/.
+  googleapis_auth: ^2.0.0
 
   # Auth + database (Firebase only – there is no app backend)
   firebase_core: ^4.2.0
@@ -96,6 +101,9 @@ flutter:
 
   assets:
     - assets/images/
+    # Holds fcm_service_account.json, which is NOT in git. See the .example
+    # file in there for where to download it from.
+    - assets/secrets/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

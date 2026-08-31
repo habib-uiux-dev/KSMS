@@ -7,12 +7,13 @@ import '../../../core/widgets/image_loader.dart';
 import '../../home/controller/home_controller.dart';
 import '../controller/admin_controller.dart';
 import 'admin_home_screen.dart';
+import 'admin_notify_screen.dart';
 import 'admin_orders_screen.dart';
 import 'admin_products_screen.dart';
 import 'admin_summary_screen.dart';
 import 'widgets/admin_widgets.dart';
 
-/// Holds the four admin tabs behind one bottom bar.
+/// Holds the five admin tabs behind one bottom bar.
 ///
 /// The tabs live in an IndexedStack, so switching keeps each tab's scroll
 /// position and does not re-subscribe the Firestore listeners.
@@ -26,7 +27,7 @@ class AdminShellScreen extends StatefulWidget {
 class _AdminShellScreenState extends State<AdminShellScreen> {
   int _index = 0;
 
-  static const _titles = ['Home', 'Orders', 'Summary', 'Products'];
+  static const _titles = ['Home', 'Orders', 'Summary', 'Products', 'Notify'];
 
   @override
   Widget build(BuildContext context) {
@@ -76,6 +77,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
               AdminOrdersScreen(),
               AdminSummaryScreen(),
               AdminProductsScreen(),
+              AdminNotifyScreen(),
             ],
           ),
         ),
@@ -104,7 +106,8 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
     0 => Icons.dashboard_outlined,
     1 => Icons.receipt_long_outlined,
     2 => Icons.bar_chart_outlined,
-    _ => Icons.inventory_2_outlined,
+    3 => Icons.inventory_2_outlined,
+    _ => Icons.campaign_outlined,
   };
 }
 
