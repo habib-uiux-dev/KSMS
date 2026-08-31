@@ -5,6 +5,7 @@ import 'dart:developer';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:kms/core/utils/app_image.dart';
 
 import '../../../core/routes/app_pages.dart';
 import '../../../core/transition/screen_transition.dart';
@@ -51,10 +52,7 @@ class _SplashScreenState extends State<SplashScreen> {
     SessionManager.setValue(kIsLogin, isLoggedIn);
 
     if (!isLoggedIn) {
-      const ScreenTransition(
-        routeName: Routes.login,
-        replace: true,
-      ).navigate();
+      const ScreenTransition(routeName: Routes.login, replace: true).navigate();
       return;
     }
 
@@ -87,21 +85,10 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              height: 96.h,
-              width: 96.h,
-              decoration: BoxDecoration(
-                gradient: AppColor.primaryGradient,
-                borderRadius: BorderRadius.circular(24.r),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                'K',
-                style: interExtraBold.copyWith(
-                  fontSize: 44.sp,
-                  color: AppColor.alwaysWhite,
-                ),
-              ),
+            SizedBox(
+              width: 200.w,
+              height: 200.h,
+              child: Image.asset(AppImage.bgSplash, fit: BoxFit.cover),
             ),
             SizedBox(height: 20.h),
             Text(
