@@ -20,27 +20,45 @@ class _AdminNotifyScreenState extends State<AdminNotifyScreen> {
 
   final _title = TextEditingController();
   final _body = TextEditingController();
+  final _image = TextEditingController();
+
+  /// True while a preset is being written into the fields, so the listeners
+  /// below do not read that as the admin typing and drop the draft back to
+  /// `custom` - which would file the image link under the wrong preset.
+  bool _applying = false;
 
   @override
   void initState() {
     super.initState();
-    // The controller holds the text so `canSend` can react to it; these two
-    // only mirror it into the fields when a preset is tapped.
-    _title.addListener(() => _controller.title.value = _title.text);
-    _body.addListener(() => _controller.body.value = _body.text);
+    // The controller holds the text so `canSend` can react to it; these
+    // listeners only mirror the fields into it.
+    _title.addListener(() {
+      _controller.title.value = _title.text;
+      if (!_applying) _controller.markAsCustom();
+    });
+    _body.addListener(() {
+      _controller.body.value = _body.text;
+      if (!_applying) _controller.markAsCustom();
+    });
+    _image.addListener(() => _controller.imageUrl.value = _image.text);
   }
 
   @override
   void dispose() {
     _title.dispose();
     _body.dispose();
+    _image.dispose();
     super.dispose();
   }
 
-  void _applyPreset(({String title, String body}) preset) {
+  void _applyPreset(NotifyPreset preset) {
+    _applying = true;
     _controller.usePreset(preset);
     _title.text = preset.title;
     _body.text = preset.body;
+    // Whatever picture went out with this preset last time comes back with it.
+    _image.text = _controller.imageUrl.value;
+    _applying = false;
   }
 
   Future<void> _confirmThenSend() async {
@@ -66,6 +84,26 @@ class _AdminNotifyScreenState extends State<AdminNotifyScreen> {
             ),
             SizedBox(height: 4.h),
             Text(_controller.body.value, style: GoogleFonts.openSans()),
+            if (_controller.imageUrl.value.trim().isNotEmpty) ...[
+              SizedBox(height: 8.h),
+              Row(
+                children: [
+                  Icon(
+                    Icons.image_outlined,
+                    size: 14.sp,
+                    color: AdminColors.muted,
+                  ),
+                  SizedBox(width: 4.w),
+                  Text(
+                    'with a picture',
+                    style: GoogleFonts.openSans(
+                      fontSize: 12.sp,
+                      color: AdminColors.muted,
+                    ),
+                  ),
+                ],
+              ),
+            ],
             SizedBox(height: 12.h),
             Text(
               'Everyone with the app installed gets this. It cannot be taken '
@@ -100,8 +138,11 @@ class _AdminNotifyScreenState extends State<AdminNotifyScreen> {
 
     await _controller.send();
     if (_controller.title.value.isEmpty) {
+      _applying = true;
       _title.clear();
       _body.clear();
+      _image.clear();
+      _applying = false;
     }
   }
 
@@ -136,7 +177,54 @@ class _AdminNotifyScreenState extends State<AdminNotifyScreen> {
         }),
 
         Text(
-          'Quick messages',
+          'Daily calls',
+          style: GoogleFonts.openSans(
+            fontSize: 13.sp,
+            fontWeight: FontWeight.w700,
+            color: AdminColors.ink,
+          ),
+        ),
+        SizedBox(height: 8.h),
+        Row(
+          children: [
+            // Labels come from the presets rather than being typed again here,
+            // so editing the message can never leave the button saying
+            // something else.
+            Expanded(
+              child: _CallButton(
+                label: AdminNotifyController.teaPreset.title,
+                icon: Icons.local_cafe,
+                color: AdminColors.green,
+                onTap: () => _applyPreset(AdminNotifyController.teaPreset),
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: _CallButton(
+                label: AdminNotifyController.smokePreset.title,
+                icon: Icons.smoking_rooms,
+                color: AdminColors.red,
+                onTap: () => _applyPreset(AdminNotifyController.smokePreset),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 6.h),
+        Text(
+          // Says what a tap does, because a big coloured button labelled
+          // "চা এসেছে" reads like it sends on the spot - and one stray tap
+          // reaching every phone in the office is not a thing to leave to
+          // guesswork.
+          'Fills the message below. Send still needs a tap.',
+          style: GoogleFonts.openSans(
+            fontSize: 11.sp,
+            color: AdminColors.muted,
+          ),
+        ),
+
+        SizedBox(height: 18.h),
+        Text(
+          'Other messages',
           style: GoogleFonts.openSans(
             fontSize: 13.sp,
             fontWeight: FontWeight.w700,
@@ -197,7 +285,52 @@ class _AdminNotifyScreenState extends State<AdminNotifyScreen> {
           style: GoogleFonts.openSans(fontSize: 16.sp, color: AdminColors.ink),
         ),
 
-        SizedBox(height: 12.h),
+        SizedBox(height: 6.h),
+        Row(
+          children: [
+            _Label('Picture link'),
+            SizedBox(width: 6.w),
+            Text(
+              'optional',
+              style: GoogleFonts.openSans(
+                fontSize: 12.sp,
+                color: AdminColors.muted,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 8.h),
+        TextField(
+          controller: _image,
+          keyboardType: TextInputType.url,
+          autocorrect: false,
+          decoration: _decoration('https://...'),
+          style: GoogleFonts.openSans(fontSize: 14.sp, color: AdminColors.ink),
+        ),
+        SizedBox(height: 6.h),
+        Obx(() {
+          final link = _controller.imageUrl.value.trim();
+
+          if (link.isNotEmpty && !_controller.isImageLinkValid) {
+            return _Hint(
+              'That is not a link. It has to start with https://',
+              color: AdminColors.red,
+              icon: Icons.error_outline,
+            );
+          }
+
+          if (link.isEmpty) {
+            return _Hint(
+              'Remembered per message - the tea link comes back next tea time.',
+              color: AdminColors.muted,
+              icon: Icons.info_outline,
+            );
+          }
+
+          return _ImagePreview(url: link);
+        }),
+
+        SizedBox(height: 14.h),
         SizedBox(
           width: double.infinity,
           height: 52.h,
@@ -286,6 +419,143 @@ class _AdminNotifyScreenState extends State<AdminNotifyScreen> {
       borderSide: const BorderSide(color: AdminColors.green),
     ),
   );
+}
+
+/// Draws the picture before it goes out.
+///
+/// Worth the space: FCM fetches the URL on its own servers and silently drops
+/// the picture if it cannot, so a bad link produces a perfectly successful
+/// send with no image and no error. Seeing it load here is the only warning
+/// available.
+class _ImagePreview extends StatelessWidget {
+  const _ImagePreview({required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10.r),
+      child: Image.network(
+        url,
+        height: 120.h,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, progress) => progress == null
+            ? child
+            : Container(
+                height: 120.h,
+                color: AdminColors.tile,
+                alignment: Alignment.center,
+                child: const CircularProgressIndicator(strokeWidth: 2),
+              ),
+        errorBuilder: (context, error, stack) => Container(
+          height: 60.h,
+          padding: EdgeInsets.symmetric(horizontal: 12.w),
+          color: AdminColors.amberBg,
+          child: Row(
+            children: [
+              Icon(
+                Icons.broken_image_outlined,
+                size: 18.sp,
+                color: AdminColors.amber,
+              ),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Text(
+                  'This link did not load. The notification would arrive '
+                  'without a picture.',
+                  style: GoogleFonts.openSans(
+                    fontSize: 12.sp,
+                    color: const Color(0xFF7A4A0A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Hint extends StatelessWidget {
+  const _Hint(this.text, {required this.color, required this.icon});
+
+  final String text;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 13.sp, color: color),
+        SizedBox(width: 5.w),
+        Expanded(
+          child: Text(
+            text,
+            style: GoogleFonts.openSans(fontSize: 11.sp, color: color),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One of the two daily calls. Same shape as the tea/smoke shortcuts the shop
+/// screen already uses, so the pair reads as the same idea.
+class _CallButton extends StatelessWidget {
+  const _CallButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12.r),
+      child: Container(
+        padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 12.w),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(12.r),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.openSans(
+                  fontSize: 15.sp,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            SizedBox(width: 8.w),
+            CircleAvatar(
+              backgroundColor: Colors.white,
+              radius: 14.r,
+              child: Icon(icon, size: 17.sp, color: color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Shown until the service-account key is added, because otherwise the first

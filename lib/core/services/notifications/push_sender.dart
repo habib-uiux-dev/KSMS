@@ -53,9 +53,14 @@ class PushSender {
   /// Errors come back as a string rather than an exception because every
   /// caller wants to put them on screen, and the FCM error body is the only
   /// place that says *why* a send was refused.
+  /// [imageUrl] must be a public http(s) link. FCM fetches it on its own
+  /// servers, not on the phone, so anything behind a login or reachable only
+  /// on the office network arrives as a notification with no picture and no
+  /// error to say why.
   static Future<String?> sendToEveryone({
     required String title,
     required String body,
+    String? imageUrl,
   }) async {
     try {
       final client = await _authorised();
@@ -72,7 +77,7 @@ class PushSender {
         body: jsonEncode({
           'message': {
             'topic': allUsersTopic,
-            'notification': {'title': title, 'body': body},
+            'notification': {'title': title, 'body': body, 'image': ?imageUrl},
             // high priority so Android wakes the device rather than batching
             // this with tomorrow's sync.
             //
@@ -81,10 +86,19 @@ class PushSender {
             // lands on Android's default channel with no sound.
             'android': {
               'priority': 'high',
-              'notification': {'channel_id': 'main_channel'},
+              'notification': {
+                'channel_id': 'main_channel',
+                // Repeated here on purpose: the top-level `image` is what the
+                // system tray uses when the app is closed, and this one is
+                // what arrives as message.notification.android.imageUrl for
+                // the foreground handler to draw itself.
+                'image': ?imageUrl,
+              },
             },
             'apns': {
               'headers': {'apns-priority': '10'},
+              if (imageUrl != null)
+                'fcm_options': {'image': imageUrl},
             },
           },
         }),

@@ -27,26 +27,30 @@ class NotificationService {
       sound: true,
     );
 
+    // Logged, never fatal.
+    //
+    // Every one of these cases used to `return`, which skipped the topic
+    // subscription at the bottom of this method - so a phone that said "Don't
+    // allow" on the very first launch never joined `all_users`, and nothing
+    // ever tried again. Turning notifications back on in Android settings did
+    // not help either, because the subscription was what was missing, not the
+    // permission. That is why broadcasts reached one device and no others.
+    //
+    // Subscribing needs no permission. Permission governs whether a delivered
+    // message is *shown*, and Android re-checks that at delivery time, so a
+    // subscribed phone starts working the moment its owner allows
+    // notifications - no reinstall, no code change.
     switch (settings.authorizationStatus) {
       case AuthorizationStatus.authorized:
         log("✅ Notification permission granted");
-        break;
-
       case AuthorizationStatus.provisional:
         log("✅ Provisional notification permission granted");
-        break;
-
       case AuthorizationStatus.denied:
-        log("❌ Notification permission denied");
-        return;
-
+        log("⚠️ Notification permission denied - subscribing anyway");
       case AuthorizationStatus.deniedPermanently:
-        log("❌ Notification permission permanently denied");
-        return;
-
+        log("⚠️ Notification permission permanently denied - subscribing anyway");
       case AuthorizationStatus.notDetermined:
-        log("Notification permission not determined");
-        return;
+        log("⚠️ Notification permission not determined - subscribing anyway");
     }
 
     await _messaging.setForegroundNotificationPresentationOptions(
