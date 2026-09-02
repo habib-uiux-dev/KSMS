@@ -3,7 +3,7 @@
 class Constants {
   Constants._();
 
-  static const String appVersion = 'Version 1.0.0+1';
+  static const String appVersion = 'Version 1.0.1';
 
   static const String baseUrl = 'https://example.com';
   static const String subUrl = '/api';

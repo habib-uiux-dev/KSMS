@@ -1,5 +1,8 @@
+import 'dart:developer';
+
 import 'package:get/get.dart';
 
+import '../../../core/services/firebase/user_repository.dart';
 import '../../../core/services/notifications/push_sender.dart';
 import '../../../core/utils/session_manager.dart';
 import '../../../core/widgets/show_custom_toast.dart';
@@ -28,6 +31,18 @@ class AdminNotifyController extends GetxController {
   /// Kept only for this session. Enough to see that the last one went, not
   /// enough to pretend this is a message history.
   final lastSent = RxnString();
+
+  /// The devices that can be reached right now, and how many people exist at
+  /// all. Shown side by side so a gap - somebody who has not opened the app
+  /// since tokens shipped - is visible before sending, not guessed at after.
+  final reachableCount = 0.obs;
+  final userCount = 0.obs;
+  final isCountingDevices = true.obs;
+
+  /// The result of the last send, per device. This is the reason the whole
+  /// token mechanism exists: a topic send could only ever report "accepted".
+  final delivered = 0.obs;
+  final failures = <PushFailure>[].obs;
 
   /// Which preset the current draft came from, so the image link is saved back
   /// under the right one. Anything typed by hand shares the `custom` slot.
@@ -120,15 +135,33 @@ class AdminNotifyController extends GetxController {
       title.value.trim().isNotEmpty &&
       body.value.trim().isNotEmpty;
 
+  final UserRepository _users = UserRepository();
+
   @override
   void onInit() {
     super.onInit();
     _check();
+    refreshDeviceCount();
   }
 
   Future<void> _check() async {
     isConfigured.value = await PushSender.isConfigured();
     isChecking.value = false;
+  }
+
+  /// Public so the screen can offer a retry - this is the number an admin
+  /// checks after handing out a new APK.
+  Future<void> refreshDeviceCount() async {
+    isCountingDevices.value = true;
+    try {
+      final targets = await _users.fetchPushTargets();
+      reachableCount.value = targets.length;
+      userCount.value = await _users.countUsers();
+    } catch (e) {
+      log('Could not count devices: $e');
+    } finally {
+      isCountingDevices.value = false;
+    }
   }
 
   /// Loads a preset along with whatever picture went out with it last time.
@@ -147,32 +180,70 @@ class AdminNotifyController extends GetxController {
     if (!canSend) return;
 
     final sentTitle = title.value.trim();
+    final sentBody = body.value.trim();
     final link = imageUrl.value.trim();
 
     isSending.value = true;
-    try {
-      final error = await PushSender.sendToEveryone(
-        title: sentTitle,
-        body: body.value.trim(),
-        imageUrl: link.isEmpty ? null : link,
-      );
+    delivered.value = 0;
+    failures.clear();
 
-      if (error != null) {
-        // Shown for longer than the usual toast: these say what to fix, and
-        // they are not the kind of sentence anyone reads in two seconds.
-        showCustomToast(error, duration: 6);
+    try {
+      final targets = await _users.fetchPushTargets();
+
+      // Nobody has registered a device yet - everyone is still on a build
+      // from before tokens shipped. The topic is the only thing those phones
+      // have in common, so fall back to it rather than sending to no one.
+      if (targets.isEmpty) {
+        final error = await PushSender.sendToEveryone(
+          title: sentTitle,
+          body: sentBody,
+          imageUrl: link.isEmpty ? null : link,
+        );
+        if (error != null) {
+          // Shown for longer than the usual toast: these say what to fix, and
+          // they are not the kind of sentence anyone reads in two seconds.
+          showCustomToast(error, duration: 6);
+          return;
+        }
+        _finish(sentTitle);
+        showCustomToast('Sent to the all_users topic');
         return;
       }
 
-      _rememberImage();
-      lastSent.value = sentTitle;
-      title.value = '';
-      body.value = '';
-      imageUrl.value = '';
-      activePresetId.value = _customId;
-      showCustomToast('Sent to everyone');
+      final report = await PushSender.sendToDevices(
+        targets: targets,
+        title: sentTitle,
+        body: sentBody,
+        imageUrl: link.isEmpty ? null : link,
+      );
+
+      delivered.value = report.delivered;
+      failures.value = report.failures;
+      reachableCount.value = targets.length;
+
+      if (report.delivered == 0) {
+        showCustomToast('Nobody received it - see the list below', duration: 6);
+        return;
+      }
+
+      _finish(sentTitle);
+      showCustomToast(
+        report.isCompleteSuccess
+            ? 'Sent to all ${report.delivered}'
+            : 'Sent to ${report.delivered} of ${report.attempted}',
+      );
     } finally {
       isSending.value = false;
     }
+  }
+
+  /// Clears the draft after a send that actually reached somebody.
+  void _finish(String sentTitle) {
+    _rememberImage();
+    lastSent.value = sentTitle;
+    title.value = '';
+    body.value = '';
+    imageUrl.value = '';
+    activePresetId.value = _customId;
   }
 }

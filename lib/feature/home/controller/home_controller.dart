@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import '../../../core/services/firebase/order_repository.dart';
+import '../../../core/services/notifications/fcm_token_sync.dart';
 import '../../../core/services/firebase/product_repository.dart';
 import '../../../core/services/firebase/settings_repository.dart';
 import '../../../core/services/firebase/user_repository.dart';
@@ -76,6 +77,12 @@ class HomeController extends GetxController {
     _listenToProducts();
     _listenToTodayOrder();
     _listenToSettings();
+
+    // Home is the first screen every signed-in person reaches, which makes it
+    // the one place the uid is guaranteed to exist. Fire-and-forget: nothing
+    // on this screen waits for it.
+    final id = uid;
+    if (id != null) unawaited(FcmTokenSync.start(id));
   }
 
   @override

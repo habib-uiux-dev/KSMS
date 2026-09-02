@@ -63,4 +63,47 @@ class UserRepository {
   Future<void> updateDesignation(String uid, String designation) => _users
       .doc(uid)
       .set({'designation': designation}, SetOptions(merge: true));
+
+  // ------------------------------------------------------------ push tokens
+
+  /// Records which device this person is currently carrying.
+  ///
+  /// Written by the owner into their own document, so it needs no new
+  /// security rule - `users/{uid}` already allows a self-write.
+  Future<void> saveFcmToken(String uid, String token) => _users.doc(uid).set({
+    'fcm_token': token,
+    'fcm_token_at': FieldValue.serverTimestamp(),
+  }, SetOptions(merge: true));
+
+  /// Everyone the admin can currently push to.
+  ///
+  /// Reading the whole collection is allowed for an admin and nobody else
+  /// (`allow read: if isAdmin()`), which is what makes per-device sending
+  /// possible at all. Users without a token - never opened the app since this
+  /// feature shipped - are simply absent, and the send screen says how many
+  /// that is rather than pretending everyone is covered.
+  Future<List<PushTarget>> fetchPushTargets() async {
+    final snapshot = await _users.get();
+
+    final targets = <PushTarget>[];
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final token = data['fcm_token'] as String?;
+      if (token == null || token.isEmpty) continue;
+
+      targets.add((
+        uid: doc.id,
+        name: (data['name'] as String?) ?? 'Someone',
+        token: token,
+      ));
+    }
+    return targets;
+  }
+
+  /// How many people have an account at all, token or not. The send screen
+  /// shows it beside the token count so a gap is visible.
+  Future<int> countUsers() async => (await _users.count().get()).count ?? 0;
 }
+
+/// One device an admin can push to.
+typedef PushTarget = ({String uid, String name, String token});

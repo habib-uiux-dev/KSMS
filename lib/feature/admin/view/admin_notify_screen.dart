@@ -167,6 +167,9 @@ class _AdminNotifyScreenState extends State<AdminNotifyScreen> {
             color: AdminColors.muted,
           ),
         ),
+        SizedBox(height: 14.h),
+
+        const _CoverageCard(),
         SizedBox(height: 18.h),
 
         Obx(() {
@@ -393,6 +396,8 @@ class _AdminNotifyScreenState extends State<AdminNotifyScreen> {
             ),
           );
         }),
+
+        const _FailureList(),
       ],
     );
   }
@@ -419,6 +424,148 @@ class _AdminNotifyScreenState extends State<AdminNotifyScreen> {
       borderSide: const BorderSide(color: AdminColors.green),
     ),
   );
+}
+
+/// How many phones can actually be reached, against how many people exist.
+///
+/// Sent to a topic, this number was unknowable - which is exactly why "it
+/// reaches some devices and not others" went uninvestigated for so long. A
+/// gap here has one cause: somebody has not opened the current build yet, so
+/// their device has never registered.
+class _CoverageCard extends StatelessWidget {
+  const _CoverageCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = Get.find<AdminNotifyController>();
+
+    return Obx(() {
+      final reachable = controller.reachableCount.value;
+      final total = controller.userCount.value;
+      final missing = total - reachable;
+      final busy = controller.isCountingDevices.value;
+
+      final allCovered = missing <= 0 && reachable > 0;
+
+      return Container(
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+        decoration: BoxDecoration(
+          color: allCovered ? const Color(0xFFDCFCE7) : AdminColors.tile,
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(
+            color: allCovered
+                ? AdminColors.green.withValues(alpha: 0.3)
+                : AdminColors.line,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              allCovered ? Icons.devices : Icons.phonelink_erase_outlined,
+              size: 20.sp,
+              color: allCovered ? AdminColors.green : AdminColors.muted,
+            ),
+            SizedBox(width: 10.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    busy
+                        ? 'Checking devices...'
+                        : '$reachable of $total can be reached',
+                    style: GoogleFonts.openSans(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w700,
+                      color: allCovered ? AdminColors.green : AdminColors.ink,
+                    ),
+                  ),
+                  if (!busy && missing > 0) ...[
+                    SizedBox(height: 2.h),
+                    Text(
+                      '$missing ${missing == 1 ? 'person has' : 'people have'} '
+                      'not opened the latest app yet',
+                      style: GoogleFonts.openSans(
+                        fontSize: 12.sp,
+                        color: AdminColors.muted,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: busy ? null : controller.refreshDeviceCount,
+              icon: Icon(Icons.refresh, size: 18.sp, color: AdminColors.muted),
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Check again',
+            ),
+          ],
+        ),
+      );
+    });
+  }
+}
+
+/// Names the phones the last send did not reach.
+class _FailureList extends StatelessWidget {
+  const _FailureList();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = Get.find<AdminNotifyController>();
+
+    return Obx(() {
+      final failures = controller.failures;
+      if (failures.isEmpty) return const SizedBox.shrink();
+
+      return Container(
+        margin: EdgeInsets.only(top: 16.h),
+        padding: EdgeInsets.all(14.w),
+        decoration: BoxDecoration(
+          color: AdminColors.amberBg,
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(color: AdminColors.amber.withValues(alpha: 0.35)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Did not reach ${failures.length}',
+              style: GoogleFonts.openSans(
+                fontSize: 14.sp,
+                fontWeight: FontWeight.w700,
+                color: AdminColors.amber,
+              ),
+            ),
+            SizedBox(height: 8.h),
+            for (final failure in failures)
+              Padding(
+                padding: EdgeInsets.only(bottom: 4.h),
+                child: Text(
+                  '${failure.name} — ${failure.reason}',
+                  style: GoogleFonts.openSans(
+                    fontSize: 12.sp,
+                    color: const Color(0xFF7A4A0A),
+                  ),
+                ),
+              ),
+            SizedBox(height: 4.h),
+            Text(
+              // Says what to do about it, because "App removed or reinstalled"
+              // on its own reads like something the admin has to fix.
+              'These fix themselves the next time that person opens the app.',
+              style: GoogleFonts.openSans(
+                fontSize: 11.sp,
+                color: AdminColors.muted,
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
 }
 
 /// Draws the picture before it goes out.

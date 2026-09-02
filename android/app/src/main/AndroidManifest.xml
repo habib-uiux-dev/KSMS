@@ -30,6 +30,24 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Where FCM posts a notification that arrives while the app is not
+             running.
+
+             In that case the notification is built by Firebase's own SDK, not
+             by our Dart code, and on Android 8+ that needs a channel that
+             already exists. Without this line the only channel named was the
+             one in the message payload; when it was missing, what happened
+             next varied by Android version and by manufacturer - some phones
+             fell back to a default channel, others dropped the message in
+             silence. That is what "it reaches some devices and not others"
+             looks like from the outside.
+
+             The id must match the channel MainActivity creates and the one
+             AwesomeNotificationService registers. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="main_channel" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
