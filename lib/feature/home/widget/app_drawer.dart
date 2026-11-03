@@ -5,7 +5,9 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/routes/app_pages.dart';
 import '../../../core/widgets/image_loader.dart';
+import '../../../core/widgets/show_custom_toast.dart';
 import '../../admin/controller/admin_controller.dart';
+import '../../meal_gift/meal_gift_entry_screen.dart';
 import '../controller/home_controller.dart';
 import 'edit_profile_sheet.dart';
 
@@ -76,6 +78,14 @@ class AppDrawer extends StatelessWidget {
               },
             );
           }),
+          _Tile(
+            icon: Icons.fastfood_outlined,
+            label: 'Meal & gift create',
+            onTap: () {
+              Navigator.pop(context);
+              _askForMealGiftAdminCode(context);
+            },
+          ),
 
           const Spacer(),
           Divider(height: 1, color: _line),
@@ -92,6 +102,154 @@ class AppDrawer extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _askForMealGiftAdminCode(BuildContext context) async {
+    final field = TextEditingController();
+
+    final code = await showDialog<String>(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20.r),
+        ),
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: EdgeInsets.all(24.w),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: EdgeInsets.all(14.w),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFEFF6EE),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.admin_panel_settings,
+                  size: 32.sp,
+                  color: const Color(0xFF116A2A),
+                ),
+              ),
+              SizedBox(height: 16.h),
+              Text(
+                'Meal & Gift Admin Access',
+                style: GoogleFonts.openSans(
+                  fontSize: 18.sp,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF23332B),
+                ),
+              ),
+              SizedBox(height: 6.h),
+              Text(
+                'Enter secret code to access Meal & Gift admin panel',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.openSans(
+                  fontSize: 12.sp,
+                  color: const Color(0xFF6E7A74),
+                ),
+              ),
+              SizedBox(height: 20.h),
+              TextField(
+                controller: field,
+                autofocus: true,
+                obscureText: true,
+                autocorrect: false,
+                enableSuggestions: false,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                onSubmitted: (value) => Navigator.pop(context, value),
+                decoration: InputDecoration(
+                  hintText: 'Enter Admin Code',
+                  counterText: '',
+                  prefixIcon: Icon(
+                    Icons.lock_outline,
+                    size: 20.sp,
+                    color: const Color(0xFF116A2A),
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF7F8FA),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF116A2A),
+                      width: 1.5,
+                    ),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(
+                    vertical: 14.h,
+                    horizontal: 16.w,
+                  ),
+                ),
+                style: GoogleFonts.openSans(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 2,
+                ),
+              ),
+              SizedBox(height: 20.h),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        padding: EdgeInsets.symmetric(vertical: 12.h),
+                        side: const BorderSide(color: Color(0xFFE8ECE9)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                      ),
+                      child: Text(
+                        'Cancel',
+                        style: GoogleFonts.openSans(
+                          color: const Color(0xFF6E7A74),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(context, field.text),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF116A2A),
+                        padding: EdgeInsets.symmetric(vertical: 12.h),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                      ),
+                      child: Text(
+                        'Unlock',
+                        style: GoogleFonts.openSans(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (code == null || code.trim().isEmpty) return;
+
+    if (code.trim() == '2233') {
+      showCustomToast('Meal & Gift Admin Unlocked');
+      Get.to(() => const MealGiftEntryScreen(showAdmin: true));
+    } else {
+      showCustomToast('Invalid Admin Password');
+    }
   }
 }
 

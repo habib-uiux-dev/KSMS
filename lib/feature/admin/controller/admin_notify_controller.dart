@@ -1,7 +1,11 @@
+import 'dart:convert';
 import 'dart:developer';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/services/firebase/app_firestore.dart';
 import '../../../core/services/firebase/user_repository.dart';
 import '../../../core/services/notifications/push_sender.dart';
 import '../../../core/utils/session_manager.dart';
@@ -67,6 +71,18 @@ class AdminNotifyController extends GetxController {
     body: 'স্মোক ব্রেকের সময়, চলে আসুন।',
   );
 
+  static const NotifyPreset mealBillPreset = (
+    id: 'meal_bill',
+    title: 'খাবারের বিল দিন',
+    body: 'আজকের খাবারের বিল পরিশোধ করার জন্য বিনীত অনুরোধ করা হচ্ছে।',
+  );
+
+  static const NotifyPreset giftBillPreset = (
+    id: 'gift_bill',
+    title: 'গিফটের বিল দিন',
+    body: 'আজকের গিফটের বিল পরিশোধ করার জন্য বিনীত অনুরোধ করা হচ্ছে।',
+  );
+
   /// The occasional ones, as chips.
   static const List<NotifyPreset> presets = [
     (
@@ -84,6 +100,8 @@ class AdminNotifyController extends GetxController {
       title: 'নতুন আইটেম',
       body: 'দোকানে নতুন কিছু এসেছে, দেখে নিন।',
     ),
+    mealBillPreset,
+    giftBillPreset,
   ];
 
   // ------------------------------------------------------- remembered images
@@ -176,6 +194,121 @@ class AdminNotifyController extends GetxController {
   /// whichever preset filled it and its image is saved separately.
   void markAsCustom() => activePresetId.value = _customId;
 
+  DateTime? _parseDate(dynamic val) {
+    if (val == null) return null;
+    if (val is Timestamp) return val.toDate();
+    if (val is DateTime) return val;
+    if (val is String) return DateTime.tryParse(val);
+    if (val is int) return DateTime.fromMillisecondsSinceEpoch(val);
+    return null;
+  }
+
+  Future<Set<String>?> _fetchLatestEventUserIds({required bool isMeal}) async {
+    try {
+      final targetType = isMeal ? 'meal' : 'gift';
+      final List<Map<String, dynamic>> allEvents = [];
+
+      try {
+        final snapshot = await appFirestore.collection('events').get();
+        for (final doc in snapshot.docs) {
+          final data = Map<String, dynamic>.from(doc.data());
+          if (!data.containsKey('id') || data['id'] == null) {
+            data['id'] = doc.id;
+          }
+          allEvents.add(data);
+        }
+      } catch (e) {
+        log('Could not fetch events from Firestore: $e');
+      }
+
+      if (allEvents.isEmpty) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final eventsJson = prefs.getStringList('app_events');
+          if (eventsJson != null && eventsJson.isNotEmpty) {
+            for (final str in eventsJson) {
+              final map = jsonDecode(str) as Map<String, dynamic>;
+              allEvents.add(map);
+            }
+          }
+        } catch (e) {
+          log('Could not load events from prefs fallback: $e');
+        }
+      }
+
+      if (allEvents.isEmpty) return null;
+
+      final matchingDocs = allEvents.where((data) {
+        final type = data['type']?.toString().toLowerCase().trim();
+        return type == targetType;
+      }).toList();
+
+      if (matchingDocs.isEmpty) return null;
+
+      matchingDocs.sort((a, b) {
+        final dateA = _parseDate(a['date'] ?? a['createdAt'] ?? a['created_at']);
+        final dateB = _parseDate(b['date'] ?? b['createdAt'] ?? b['created_at']);
+        if (dateA == null && dateB == null) return 0;
+        if (dateA == null) return 1;
+        if (dateB == null) return -1;
+        return dateB.compareTo(dateA);
+      });
+
+      final latestDoc = matchingDocs.first;
+      final userStatuses = latestDoc['userStatuses'] as List? ?? [];
+      final selectedUserIdsList = latestDoc['selectedUserIds'] as List? ?? [];
+
+      final rawSelectedIds = <String>{};
+      for (final s in userStatuses) {
+        if (s is Map) {
+          final uId = s['userId']?.toString().trim();
+          if (uId != null && uId.isNotEmpty) {
+            rawSelectedIds.add(uId);
+          }
+        } else if (s is String && s.trim().isNotEmpty) {
+          rawSelectedIds.add(s.trim());
+        }
+      }
+      for (final id in selectedUserIdsList) {
+        if (id != null && id.toString().trim().isNotEmpty) {
+          rawSelectedIds.add(id.toString().trim());
+        }
+      }
+
+      if (rawSelectedIds.isEmpty) return null;
+
+      final resolvedUids = <String>{...rawSelectedIds};
+      try {
+        final allUserDocs = await appFirestore.collection('users').get();
+        for (final uDoc in allUserDocs.docs) {
+          final uData = uDoc.data();
+          if (UserRepository.matchesUser(
+            allowedIdentifiers: rawSelectedIds,
+            docId: uDoc.id,
+            data: uData,
+          )) {
+            resolvedUids.add(uDoc.id);
+            final customId = uData['id']?.toString().trim();
+            final authUid = uData['uid']?.toString().trim();
+            final email = uData['email']?.toString().trim();
+            final name = uData['name']?.toString().trim();
+            if (customId != null && customId.isNotEmpty) resolvedUids.add(customId);
+            if (authUid != null && authUid.isNotEmpty) resolvedUids.add(authUid);
+            if (email != null && email.isNotEmpty) resolvedUids.add(email);
+            if (name != null && name.isNotEmpty) resolvedUids.add(name);
+          }
+        }
+      } catch (e) {
+        log('Could not resolve user aliases: $e');
+      }
+
+      return resolvedUids;
+    } catch (e) {
+      log('Could not fetch event user ids: $e');
+      return null;
+    }
+  }
+
   Future<void> send() async {
     if (!canSend) return;
 
@@ -188,12 +321,44 @@ class AdminNotifyController extends GetxController {
     failures.clear();
 
     try {
-      final targets = await _users.fetchPushTargets();
+      final isMealBill = activePresetId.value == 'meal_bill' ||
+          sentTitle == mealBillPreset.title ||
+          sentTitle.contains('খাবারের বিল') ||
+          sentTitle.toLowerCase().contains('meal bill');
+
+      final isGiftBill = activePresetId.value == 'gift_bill' ||
+          sentTitle == giftBillPreset.title ||
+          sentTitle.contains('গিফটের বিল') ||
+          sentTitle.toLowerCase().contains('gift bill');
+
+      final isTargetedBill = isMealBill || isGiftBill;
+
+      Set<String>? allowedUids;
+      if (isMealBill) {
+        allowedUids = await _fetchLatestEventUserIds(isMeal: true);
+        if (allowedUids == null || allowedUids.isEmpty) {
+          showCustomToast('কোনো মিল ইভেন্ট বা নির্বাচিত ইউজার পাওয়া যায়নি', duration: 4);
+          return;
+        }
+      } else if (isGiftBill) {
+        allowedUids = await _fetchLatestEventUserIds(isMeal: false);
+        if (allowedUids == null || allowedUids.isEmpty) {
+          showCustomToast('কোনো গিফট ইভেন্ট বা নির্বাচিত ইউজার পাওয়া যায়নি', duration: 4);
+          return;
+        }
+      }
+
+      final targets = await _users.fetchPushTargets(allowedUids: allowedUids);
 
       // Nobody has registered a device yet - everyone is still on a build
-      // from before tokens shipped. The topic is the only thing those phones
-      // have in common, so fall back to it rather than sending to no one.
+      // from before tokens shipped.
       if (targets.isEmpty) {
+        if (isTargetedBill) {
+          showCustomToast('নির্বাচিত ইউজারদের কোনো ডিভাইস টোকেন পাওয়া যায়নি', duration: 5);
+          return;
+        }
+
+        // Only general announcements fall back to the all_users topic
         final error = await PushSender.sendToEveryone(
           title: sentTitle,
           body: sentBody,

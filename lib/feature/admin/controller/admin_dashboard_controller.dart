@@ -8,8 +8,10 @@ import 'package:get/get.dart';
 
 import '../../../core/services/firebase/order_repository.dart';
 import '../../../core/services/firebase/settings_repository.dart';
+import '../../../core/services/notifications/push_sender.dart';
 import '../../../core/widgets/show_custom_toast.dart';
 import '../../home/model/order.dart';
+import 'admin_notify_controller.dart';
 
 /// Backs the three read-only admin tabs: Home, Cash Collection and Summary.
 ///
@@ -71,6 +73,21 @@ class AdminDashboardController extends GetxController {
     try {
       await _settingsRepository.setOrderingOpen(isOpen);
       showCustomToast(isOpen ? 'Orders are now open' : 'Orders are now closed');
+
+      final presetId = isOpen ? 'orders_open' : 'orders_closed';
+      final title = isOpen ? 'অর্ডার নেওয়া শুরু' : 'অর্ডার বন্ধ';
+      final body = isOpen
+          ? 'আজকের অর্ডার দেওয়া যাচ্ছে এখন।'
+          : 'আজকের মতো অর্ডার নেওয়া বন্ধ।';
+      final img = AdminNotifyController.savedImageFor(presetId);
+
+      unawaited(
+        PushSender.broadcast(
+          title: title,
+          body: body,
+          imageUrl: img.isEmpty ? null : img,
+        ),
+      );
     } on FirebaseException catch (e) {
       log('Toggle ordering failed: ${e.code} ${e.message}');
       showCustomToast(

@@ -4,6 +4,7 @@ import 'dart:developer';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:googleapis_auth/auth_io.dart';
 
+import '../firebase/app_firestore.dart';
 import '../firebase/user_repository.dart';
 
 /// One device that did not get the message, and why.
@@ -192,6 +193,93 @@ class PushSender {
       log('FCM send failed: $e');
       return 'Could not send. Check the internet connection.';
     }
+  }
+
+  /// Broadcasts notification to all registered devices or all_users topic.
+  static Future<PushReport> broadcast({
+    required String title,
+    required String body,
+    String? imageUrl,
+  }) async {
+    try {
+      final targets = await UserRepository().fetchPushTargets();
+      if (targets.isNotEmpty) {
+        return await sendToDevices(
+          targets: targets,
+          title: title,
+          body: body,
+          imageUrl: imageUrl,
+        );
+      } else {
+        final err = await sendToEveryone(
+          title: title,
+          body: body,
+          imageUrl: imageUrl,
+        );
+        return PushReport(
+          delivered: err == null ? 1 : 0,
+          failures: err == null ? [] : [(name: 'Everyone', reason: err)],
+        );
+      }
+    } catch (e) {
+      log('PushSender.broadcast error: $e');
+      return PushReport(delivered: 0, failures: [(name: 'All', reason: '$e')]);
+    }
+  }
+
+  /// Sends a push notification to specific users by ID, UID, email, or name.
+  static Future<PushReport> sendToUsers({
+    required Iterable<String> userIds,
+    required String title,
+    required String body,
+    String? imageUrl,
+  }) async {
+    final rawSelectedIds = userIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (rawSelectedIds.isEmpty) {
+      return const PushReport(delivered: 0, failures: []);
+    }
+
+    final resolvedUids = <String>{...rawSelectedIds};
+    try {
+      final allUserDocs = await appFirestore.collection('users').get();
+      for (final uDoc in allUserDocs.docs) {
+        final uData = uDoc.data();
+        if (UserRepository.matchesUser(
+          allowedIdentifiers: rawSelectedIds,
+          docId: uDoc.id,
+          data: uData,
+        )) {
+          resolvedUids.add(uDoc.id);
+          final customId = uData['id']?.toString().trim();
+          final authUid = uData['uid']?.toString().trim();
+          final email = uData['email']?.toString().trim();
+          final name = uData['name']?.toString().trim();
+          if (customId != null && customId.isNotEmpty) resolvedUids.add(customId);
+          if (authUid != null && authUid.isNotEmpty) resolvedUids.add(authUid);
+          if (email != null && email.isNotEmpty) resolvedUids.add(email);
+          if (name != null && name.isNotEmpty) resolvedUids.add(name);
+        }
+      }
+    } catch (e) {
+      log('Could not resolve user aliases: $e');
+    }
+
+    final targets =
+        await UserRepository().fetchPushTargets(allowedUids: resolvedUids);
+    if (targets.isEmpty) {
+      log('PushSender.sendToUsers: no push targets found for $resolvedUids');
+      return const PushReport(delivered: 0, failures: []);
+    }
+
+    return await sendToDevices(
+      targets: targets,
+      title: title,
+      body: body,
+      imageUrl: imageUrl,
+    );
   }
 
   /// Everything in a message except who it goes to.

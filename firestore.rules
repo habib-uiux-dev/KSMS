@@ -78,12 +78,12 @@ service cloud.firestore {
 
     // ------------------------------------------------------------- users
     //
-    // A person owns their own profile outright, including the name and the
-    // designation they set from the drawer. Nobody else writes it: an admin can
-    // look, and that is all.
+    // Any signed-in user can read user profiles so attendee lists and names
+    // render across the app. A person owns and writes their own document;
+    // admins can read and write all user documents.
     match /users/{userId} {
-      allow read, write: if signedIn() && request.auth.uid == userId;
-      allow read: if isAdmin();
+      allow read: if signedIn();
+      allow write: if signedIn() && (request.auth.uid == userId || isAdmin());
     }
 
     // ---------------------------------------------------------- products
@@ -200,6 +200,21 @@ service cloud.firestore {
       // Nobody deletes an order - not the owner, not an admin. Cancelling is
       // the only removal, and it keeps the trail.
       allow delete: if false;
+    }
+
+    // ------------------------------------------------------------ events
+    //
+    // Meal and Gift events (MealEvent, GiftEvent).
+    // Document ID: eventId
+    match /events/{eventId} {
+      allow read, write, delete: if request.auth != null;
+    }
+
+    // ---------------------------------------------------------- expenses
+    //
+    // Expense items and records.
+    match /expenses/{expenseId} {
+      allow read, write, delete: if request.auth != null;
     }
 
     // Everything else is closed until a feature needs it.

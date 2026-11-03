@@ -148,7 +148,7 @@ class _AdminNotifyScreenState extends State<AdminNotifyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
+    final listView = ListView(
       padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 24.h),
       children: [
         Text(
@@ -400,6 +400,32 @@ class _AdminNotifyScreenState extends State<AdminNotifyScreen> {
         const _FailureList(),
       ],
     );
+
+    if (Navigator.canPop(context)) {
+      return Scaffold(
+        backgroundColor: AdminColors.bg,
+        appBar: AppBar(
+          backgroundColor: AdminColors.bg,
+          elevation: 0,
+          leading: IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.arrow_back, color: AdminColors.ink),
+            tooltip: 'Back',
+          ),
+          title: Text(
+            'Notifications',
+            style: GoogleFonts.openSans(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w700,
+              color: AdminColors.ink,
+            ),
+          ),
+        ),
+        body: listView,
+      );
+    }
+
+    return listView;
   }
 
   InputDecoration _decoration(String hint) => InputDecoration(

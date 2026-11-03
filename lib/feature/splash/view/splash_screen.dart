@@ -63,11 +63,19 @@ class _SplashScreenState extends State<SplashScreen> {
     // A failed read is treated as "has a role": the home screen degrades
     // gracefully, whereas a network blip should not force the picker again.
     var needsRole = false;
-    try {
-      final profile = await UserRepository().fetchUser(user.uid);
-      needsRole = AuthController.needsDesignation(profile);
-    } catch (e) {
-      log('Profile check failed: $e');
+    final savedDesignation = SessionManager.getValue(SessionManager.designationKey(user.uid)) as String?;
+    if (savedDesignation != null && savedDesignation.trim().isNotEmpty) {
+      needsRole = false;
+    } else {
+      try {
+        final profile = await UserRepository().fetchUser(user.uid);
+        needsRole = AuthController.needsDesignation(profile);
+        if (!needsRole && profile?.designation != null && profile!.designation!.trim().isNotEmpty) {
+          SessionManager.setValue(SessionManager.designationKey(user.uid), profile.designation!.trim());
+        }
+      } catch (e) {
+        log('Profile check failed: $e');
+      }
     }
 
     if (!mounted) return;

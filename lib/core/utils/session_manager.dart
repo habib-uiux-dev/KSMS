@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get_storage/get_storage.dart';
 
 import '../routes/app_pages.dart';
@@ -23,11 +24,15 @@ class SessionManager {
   static dynamic getValue(String key, {dynamic value}) =>
       _preferences.read(key) ?? value;
 
-  static dynamic removeValue(String key) => _preferences.remove(key);
+  static void removeValue(String key) => _preferences.remove(key);
 
-  /// Clears the credentials and sends the user back to the splash screen,
-  /// which re-decides where they belong.
+  static String designationKey(String uid) => 'user_designation_$uid';
+
   static void logout() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      removeValue(designationKey(uid));
+    }
     removeValue(kIsLogin);
     removeValue(kToken);
     const ScreenTransition(routeName: Routes.splash, replace: true).navigate();

@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "230061925255-9u3cvl8f0vpkgbs1pvnlt004du1lr3d5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kms.app",
+            "certificate_hash": "dab0af732f3a40de486673383e40007d54eae756"
+          }
+        },
+        {
           "client_id": "230061925255-d9o0fp9jiq9t08cl83f3ffbnpslbhl5c.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
@@ -53,6 +61,13 @@
             {
               "client_id": "230061925255-34ak8hc9qnv5bbs8d7m42v0mc4jorikl.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "230061925255-bc6obp50tujnfdtdhdm7ebbjobg1jjur.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.kms.app"
+              }
             }
           ]
         }

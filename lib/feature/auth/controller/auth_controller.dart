@@ -1,7 +1,6 @@
 import 'dart:developer';
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -77,6 +76,7 @@ class AuthController extends GetxController {
     isLoading.value = true;
     try {
       await _userRepository.updateDesignation(uid, role);
+      SessionManager.setValue(SessionManager.designationKey(uid), role);
       appUser.value = await _userRepository.fetchUser(uid);
       const ScreenTransition(routeName: Routes.home, replace: true).navigate();
     } on FirebaseException catch (e) {
@@ -110,87 +110,106 @@ class AuthController extends GetxController {
     if (isLoading.value) return;
 
     isLoading.value = true;
+    UserCredential? userCredential;
+    String? fallbackDisplayName;
+    String? fallbackEmail;
+    String? fallbackPhotoUrl;
+
     try {
       await initGoogleSignIn();
 
-      if (!_googleSignIn.supportsAuthenticate()) {
-        showCustomToast('Google sign-in is not supported on this device');
+      // First attempt: Credential Manager via GoogleSignIn.authenticate
+      if (_googleSignIn.supportsAuthenticate()) {
+        try {
+          final account = await _googleSignIn.authenticate(
+            scopeHint: const ['email'],
+          );
+
+          final idToken = account.authentication.idToken;
+          if (idToken != null) {
+            final credential = GoogleAuthProvider.credential(idToken: idToken);
+            userCredential = await FirebaseAuth.instance.signInWithCredential(
+              credential,
+            );
+            fallbackDisplayName = account.displayName;
+            fallbackEmail = account.email;
+            fallbackPhotoUrl = account.photoUrl;
+          }
+        } catch (e) {
+          log('CredentialManager authenticate threw: $e');
+        }
+      }
+    } catch (e) {
+      log('initGoogleSignIn threw: $e');
+    }
+
+    // Second attempt: Fallback to FirebaseAuth signInWithProvider (Chrome Custom Tabs).
+    // This bypasses Android Credential Manager bugs, Samsung One UI cancellation bugs,
+    // and older Play Services limitations.
+    if (userCredential == null) {
+      try {
+        final googleProvider = GoogleAuthProvider();
+        googleProvider.addScope('email');
+        googleProvider.setCustomParameters({'prompt': 'select_account'});
+        userCredential = await FirebaseAuth.instance.signInWithProvider(
+          googleProvider,
+        );
+      } on FirebaseAuthException catch (e) {
+        log('Firebase signInWithProvider failed: ${e.code} ${e.message}');
+        if (e.code != 'canceled' &&
+            e.code != 'popup-closed-by-user' &&
+            e.code != 'web-context-cancelled') {
+          showCustomToast(e.message ?? 'Sign in failed');
+        }
+        isLoading.value = false;
+        return;
+      } catch (e) {
+        log('signInWithProvider general error: $e');
+        showCustomToast('Sign in failed: $e');
+        isLoading.value = false;
         return;
       }
+    }
 
-      // Throws GoogleSignInException instead of returning null on cancel.
-      final account = await _googleSignIn.authenticate(
-        scopeHint: const ['email'],
-      );
-
-      final idToken = account.authentication.idToken;
-      if (idToken == null) {
-        // Almost always a missing/incorrect serverClientId.
-        showCustomToast('Could not get a Google token. Check the client ID.');
-        return;
-      }
-
-      final credential = GoogleAuthProvider.credential(idToken: idToken);
-      final userCredential = await FirebaseAuth.instance.signInWithCredential(
-        credential,
-      );
-
+    try {
       final firebaseUser = userCredential.user;
       if (firebaseUser == null) {
-        showCustomToast('Sign in failed');
+        showCustomToast('Sign in failed: no user returned');
         return;
       }
 
       appUser.value = await _userRepository.upsertOnSignIn(
         AppUser(
           uid: firebaseUser.uid,
-          name: firebaseUser.displayName ?? account.displayName,
-          email: firebaseUser.email ?? account.email,
-          photoUrl: firebaseUser.photoURL ?? account.photoUrl,
+          name: firebaseUser.displayName ?? fallbackDisplayName ?? 'Google User',
+          email: firebaseUser.email ?? fallbackEmail ?? '',
+          photoUrl: firebaseUser.photoURL ?? fallbackPhotoUrl,
         ),
       );
 
       SessionManager.setValue(kIsLogin, true);
 
-      // The role is asked for once, and only when the profile hasn't got one.
-      // Reading it back from the document rather than from local storage is
-      // what makes it survive a reinstall: the answer lives with the account.
+      final localDesignation = SessionManager.getValue(SessionManager.designationKey(firebaseUser.uid)) as String?;
+      final bool hasRole = (localDesignation != null && localDesignation.trim().isNotEmpty) ||
+          !needsDesignation(appUser.value);
+
+      if (hasRole && appUser.value?.designation != null && appUser.value!.designation!.trim().isNotEmpty) {
+        SessionManager.setValue(SessionManager.designationKey(firebaseUser.uid), appUser.value!.designation!.trim());
+      }
+
       ScreenTransition(
-        routeName: needsDesignation(appUser.value)
-            ? Routes.designation
-            : Routes.home,
+        routeName: hasRole ? Routes.home : Routes.designation,
         replace: true,
       ).navigate();
-    } on GoogleSignInException catch (e) {
-      // A cancel is a normal outcome, not an error worth a toast.
-      if (e.code != GoogleSignInExceptionCode.canceled) {
-        log('Google sign-in failed: ${e.code} ${e.description}');
-        // The bare message is useless while wiring up client IDs and SHA-1s,
-        // so debug builds surface the actual code.
-        showCustomToast(
-          kDebugMode
-              ? 'Google sign-in failed: ${e.code.name}\n${e.description ?? ''}'
-              : 'Google sign-in failed',
-          duration: kDebugMode ? 5 : 2,
-        );
-      }
-    } on FirebaseAuthException catch (e) {
-      log('Firebase sign-in failed: ${e.code} ${e.message}');
-      showCustomToast(e.message ?? 'Sign in failed');
     } on FirebaseException catch (e) {
-      // Firestore, not auth: the account is signed in but the profile write
-      // failed. 'unavailable' here almost always means the Firestore database
-      // has not been created for the project yet, not that the phone is offline.
       log('Firestore write failed: ${e.plugin}/${e.code} ${e.message}');
       showCustomToast(
-        kDebugMode
-            ? 'Firestore ${e.code}: check the database exists and rules allow this user'
-            : 'Could not save your profile. Try again.',
-        duration: kDebugMode ? 5 : 2,
+        'Database error: ${e.code} (${e.message ?? ""})',
+        duration: 4,
       );
     } catch (e) {
-      log('Sign-in failed: $e');
-      showCustomToast('Something went wrong');
+      log('Sign-in finalization failed: $e');
+      showCustomToast('Something went wrong during sign in');
     } finally {
       isLoading.value = false;
     }
@@ -207,6 +226,7 @@ class AuthController extends GetxController {
   }
 
   Future<void> signOut() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
     try {
       // Both sides: Firebase drops the session, Google forgets the account so
       // the next sign-in shows the picker instead of silently reusing it.
@@ -215,6 +235,9 @@ class AuthController extends GetxController {
     } catch (e) {
       log('Sign out failed: $e');
     } finally {
+      if (uid != null) {
+        SessionManager.removeValue(SessionManager.designationKey(uid));
+      }
       appUser.value = null;
       SessionManager.removeValue(kIsLogin);
       const ScreenTransition(routeName: Routes.login, replace: true).navigate();

@@ -9,12 +9,14 @@ import 'package:kms/core/services/notifications/awesome_notification_service.dar
 import 'package:kms/core/services/notifications/notification_service.dart';
 import 'package:kms/firebase_options.dart';
 
+import 'package:provider/provider.dart';
 import 'core/bindings/initial_binding.dart';
 import 'core/routes/app_pages.dart';
 import 'core/routes/app_routes.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
 import 'core/utils/session_manager.dart';
+import 'feature/meal_gift/providers/app_state.dart';
 
 /// Toasts and dialogs need an overlay context from outside the widget tree.
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -92,17 +94,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           data: MediaQuery.of(
             context,
           ).copyWith(textScaler: const TextScaler.linear(1.0)),
-          child: GetMaterialApp(
-            builder: FToastBuilder(),
-            debugShowCheckedModeBanner: false,
-            initialBinding: InitialBinding(),
-            initialRoute: Routes.splash,
-            navigatorKey: navigatorKey,
-            defaultTransition: Transition.native,
-            getPages: AppPages.pages,
-            theme: AppTheme.light,
-            darkTheme: AppTheme.dark,
-            themeMode: widget.themeMode,
+          child: ChangeNotifierProvider<AppState>(
+            create: (_) => AppState(),
+            child: GetMaterialApp(
+              builder: FToastBuilder(),
+              debugShowCheckedModeBanner: false,
+              initialBinding: InitialBinding(),
+              initialRoute: Routes.splash,
+              navigatorKey: navigatorKey,
+              defaultTransition: Transition.native,
+              getPages: AppPages.pages,
+              theme: AppTheme.light,
+              darkTheme: AppTheme.dark,
+              themeMode: widget.themeMode,
+            ),
           ),
         );
       },

@@ -6,7 +6,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/routes/app_pages.dart';
 import '../../../core/widgets/image_loader.dart';
 import '../../admin/controller/admin_controller.dart';
+import '../../admin/view/admin_notify_screen.dart';
 import '../../auth/controller/auth_controller.dart';
+import '../../meal_gift/meal_gift_entry_screen.dart';
 import '../controller/home_controller.dart';
 import '../../../core/widgets/show_custom_toast.dart';
 import '../widget/app_drawer.dart';
@@ -92,6 +94,11 @@ class HomeScreen extends StatelessWidget {
         // second icon came from - and it takes its colour from the theme, not
         // from us.
         actions: [
+          IconButton(
+            onPressed: () => Get.to(() => const AdminNotifyScreen()),
+            icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+            tooltip: 'Notifications',
+          ),
           Builder(
             builder: (context) => IconButton(
               onPressed: Scaffold.of(context).openEndDrawer,
@@ -147,25 +154,43 @@ class HomeScreen extends StatelessWidget {
               height: 48.h,
               child: Obx(() {
                 final categories = controller.categories;
-                // Read the selection HERE, in the Obx builder itself.
-                //
-                // itemBuilder runs later, during layout, outside the scope Obx
-                // watches - so reading selectedCategory in there registered no
-                // dependency and the chips kept their first-build colours even
-                // though tapping did filter the grid.
                 final selected = controller.selectedCategory.value;
+
+                final items = <_ChipItem>[
+                  _ChipItem(
+                    label: HomeController.allCategory,
+                    selected: selected == HomeController.allCategory,
+                    onTap: () => controller.selectCategory(HomeController.allCategory),
+                  ),
+                  _ChipItem(
+                    label: 'Meal & Gift Bill',
+                    icon: Icons.fastfood_outlined,
+                    selected: false,
+                    onTap: () => Get.to(() => const MealGiftEntryScreen(showAdmin: false)),
+                  ),
+                  ...categories
+                      .where((c) => c != HomeController.allCategory)
+                      .map(
+                        (category) => _ChipItem(
+                          label: category,
+                          selected: selected == category,
+                          onTap: () => controller.selectCategory(category),
+                        ),
+                      ),
+                ];
 
                 return ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: EdgeInsets.symmetric(horizontal: 16.w),
-                  itemCount: categories.length,
+                  itemCount: items.length,
                   separatorBuilder: (_, _) => SizedBox(width: 8.w),
                   itemBuilder: (context, index) {
-                    final category = categories[index];
+                    final item = items[index];
                     return _CategoryChip(
-                      label: category,
-                      selected: selected == category,
-                      onTap: () => controller.selectCategory(category),
+                      label: item.label,
+                      icon: item.icon,
+                      selected: item.selected,
+                      onTap: item.onTap,
                     );
                   },
                 );
@@ -488,19 +513,35 @@ class _CancelledNotice extends StatelessWidget {
 }
 
 // ============================================================
-// CATEGORY CHIP
+// CATEGORY CHIP & HELPER
 // ============================================================
+
+class _ChipItem {
+  const _ChipItem({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.icon,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final IconData? icon;
+}
 
 class _CategoryChip extends StatelessWidget {
   const _CategoryChip({
     required this.label,
     required this.selected,
     required this.onTap,
+    this.icon,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -514,12 +555,25 @@ class _CategoryChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(24.r),
         ),
         child: Center(
-          child: Text(
-            label,
-            style: GoogleFonts.openSans(
-              color: selected ? Colors.white : const Color(0xFF23332B),
-              fontWeight: FontWeight.w700,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(
+                  icon,
+                  size: 16.sp,
+                  color: selected ? Colors.white : const Color(0xFF23332B),
+                ),
+                SizedBox(width: 6.w),
+              ],
+              Text(
+                label,
+                style: GoogleFonts.openSans(
+                  color: selected ? Colors.white : const Color(0xFF23332B),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ),
         ),
       ),
