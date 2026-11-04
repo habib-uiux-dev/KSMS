@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../feature/auth/model/app_user.dart';
+import '../../utils/user_filter.dart';
 import 'app_firestore.dart';
 
 /// Every read/write of the `users` collection goes through here, so the
@@ -110,6 +111,12 @@ class UserRepository {
     final email = data['email']?.toString().trim();
     final name = (data['name'] ?? data['displayName'])?.toString().trim();
 
+    if (UserFilter.isExcluded(uid: docId, name: name, email: email) ||
+        (uid != null && UserFilter.isExcluded(uid: uid, name: name, email: email)) ||
+        (id != null && UserFilter.isExcluded(uid: id, name: name, email: email))) {
+      return false;
+    }
+
     // 1. Direct exact ID / UID match
     if (allowedIdentifiers.contains(docId) ||
         (id != null && allowedIdentifiers.contains(id)) ||
@@ -200,6 +207,13 @@ class UserRepository {
     final targets = <PushTarget>[];
     for (final doc in snapshot.docs) {
       final data = doc.data();
+      if (UserFilter.isExcluded(
+        uid: doc.id,
+        name: data['name'] as String?,
+        email: data['email'] as String?,
+      )) {
+        continue;
+      }
 
       if (allowedUids != null) {
         final isAllowed = matchesUser(

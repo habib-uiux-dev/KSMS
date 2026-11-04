@@ -8,4 +8,8 @@ abstract class Routes {
   static const myOrders = '/my-orders';
   static const adminShell = '/admin';
   static const adminProductForm = '/admin/product-form';
+  static const chatList = '/chats';
+  static const chatDetail = '/chats/detail';
+  static const accounts = '/accounts';
+  static const accountsHistory = '/accounts/history';
 }

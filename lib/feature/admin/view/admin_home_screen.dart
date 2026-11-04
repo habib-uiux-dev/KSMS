@@ -4,6 +4,9 @@ import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../home/model/order.dart';
+import '../../../core/services/version/app_update_service.dart';
+import '../../../core/services/version/app_version_model.dart';
+import '../../../core/widgets/show_custom_toast.dart';
 import '../controller/admin_dashboard_controller.dart';
 import 'widgets/admin_widgets.dart';
 
@@ -35,6 +38,11 @@ class AdminHomeScreen extends StatelessWidget {
             // The shop switch sits first because it is the thing an admin
             // opens this screen to change, morning and evening.
             const _OrderingToggleCard(),
+
+            SizedBox(height: 12.h),
+
+            // Mandatory App Update control
+            const _AppUpdateAdminCard(),
 
             SizedBox(height: 18.h),
 
@@ -481,4 +489,219 @@ Future<void> _confirmCancel(
   );
 
   if (reason != null) await controller.cancelOrder(order, reason);
+}
+
+class _AppUpdateAdminCard extends StatelessWidget {
+  const _AppUpdateAdminCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<AppVersionModel>(
+      stream: AppUpdateService.instance.watchAppVersion(),
+      builder: (context, snapshot) {
+        final config = snapshot.data ??
+            const AppVersionModel(
+              minBuildNumber: 0,
+              minVersion: '1.0.0',
+              latestVersion: '1.0.0',
+              updateUrl: '',
+              forceUpdate: false,
+              title: 'নতুন আপডেট এসেছে!',
+              message:
+                  'KSMS অ্যাপ ব্যবহার চালিয়ে যেতে অনুগ্রহ করে এখনই আপডেট করুন।',
+            );
+
+        final isForced = config.forceUpdate;
+        final accent = isForced ? AdminColors.red : AdminColors.ink;
+        final tint = isForced
+            ? AdminColors.red.withValues(alpha: 0.08)
+            : Colors.grey.shade100;
+
+        return Container(
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+          decoration: BoxDecoration(
+            color: tint,
+            borderRadius: BorderRadius.circular(14.r),
+            border: Border.all(
+              color: isForced
+                  ? AdminColors.red.withValues(alpha: 0.35)
+                  : AdminColors.line,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                isForced
+                    ? Icons.system_security_update_warning_rounded
+                    : Icons.system_update_rounded,
+                color: accent,
+                size: 22.sp,
+              ),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      isForced
+                          ? 'Force Update: ACTIVE (v${config.latestVersion})'
+                          : 'Force Update: OFF (v${config.latestVersion})',
+                      style: GoogleFonts.openSans(
+                        fontSize: 14.5.sp,
+                        fontWeight: FontWeight.w800,
+                        color: accent,
+                      ),
+                    ),
+                    Text(
+                      isForced
+                          ? 'Min Build: ${config.minBuildNumber} · Old users blocked'
+                          : 'Min Build: ${config.minBuildNumber} · Tap gear to edit',
+                      style: GoogleFonts.openSans(
+                        fontSize: 11.5.sp,
+                        color: AdminColors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.settings_outlined),
+                color: AdminColors.ink,
+                tooltip: 'Configure Update',
+                onPressed: () => _showConfigDialog(context, config),
+              ),
+              Switch(
+                value: isForced,
+                activeThumbColor: Colors.white,
+                activeTrackColor: AdminColors.red,
+                onChanged: (val) async {
+                  final updated = AppVersionModel(
+                    minBuildNumber: config.minBuildNumber,
+                    minVersion: config.minVersion,
+                    latestVersion: config.latestVersion,
+                    updateUrl: config.updateUrl,
+                    forceUpdate: val,
+                    title: config.title,
+                    message: config.message,
+                    releaseNotes: config.releaseNotes,
+                  );
+                  await AppUpdateService.instance.updateVersionConfig(updated);
+                  showCustomToast(val
+                      ? 'Force update activated! Older app versions will now be blocked.'
+                      : 'Force update disabled.');
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showConfigDialog(BuildContext context, AppVersionModel current) {
+    final buildCtrl =
+        TextEditingController(text: current.minBuildNumber.toString());
+    final verCtrl = TextEditingController(text: current.latestVersion);
+    final urlCtrl = TextEditingController(text: current.updateUrl);
+    final msgCtrl = TextEditingController(text: current.message);
+
+    Get.dialog(
+      Dialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+        child: Padding(
+          padding: EdgeInsets.all(20.r),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Configure Force Update',
+                  style: GoogleFonts.openSans(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(height: 14.h),
+                TextField(
+                  controller: buildCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Minimum Required Build Number',
+                    hintText: 'e.g. 6 (anyone lower will be blocked)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                TextField(
+                  controller: verCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Latest Version Label',
+                    hintText: 'e.g. 1.0.6',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                TextField(
+                  controller: urlCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Download Link (APK / Drive / Store)',
+                    hintText: 'https://...',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                TextField(
+                  controller: msgCtrl,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Update Message (shown to users)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                SizedBox(height: 20.h),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Get.back(),
+                      child: const Text('Cancel'),
+                    ),
+                    SizedBox(width: 8.w),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AdminColors.green,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () async {
+                        final minB = int.tryParse(buildCtrl.text.trim()) ??
+                            current.minBuildNumber;
+                        final updated = AppVersionModel(
+                          minBuildNumber: minB,
+                          minVersion: verCtrl.text.trim(),
+                          latestVersion: verCtrl.text.trim(),
+                          updateUrl: urlCtrl.text.trim(),
+                          forceUpdate: current.forceUpdate,
+                          title: current.title,
+                          message: msgCtrl.text.trim(),
+                          releaseNotes: current.releaseNotes,
+                        );
+                        await AppUpdateService.instance
+                            .updateVersionConfig(updated);
+                        Get.back();
+                        showCustomToast('Update configuration saved!');
+                      },
+                      child: const Text('Save'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

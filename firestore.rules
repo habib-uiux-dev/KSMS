@@ -59,7 +59,7 @@ service cloud.firestore {
     //
     //   settings/ordering  ->  { is_open: true }
     match /settings/{document} {
-      allow read: if signedIn();
+      allow read: if true;
       allow write: if isAdmin();
     }
 
@@ -215,6 +215,106 @@ service cloud.firestore {
     // Expense items and records.
     match /expenses/{expenseId} {
       allow read, write, delete: if request.auth != null;
+    }
+
+    // ------------------------------------------------------------- chats
+    //
+    // 1-on-1 real-time chat conversations between two users.
+    // Document ID: deterministic chatId between two users (e.g. uid1_uid2)
+    //
+    // Each conversation document tracks participant UIDs, names, photos,
+    // last message snippet/timestamp, and unread counts per user.
+    match /chats/{chatId} {
+
+      function isChatParticipant() {
+        return signedIn() && (
+          chatId.matches('^' + request.auth.uid + '_.*')
+          || chatId.matches('.*_' + request.auth.uid + '$')
+          || (resource != null && request.auth.uid in resource.data.participants)
+          || (exists(/databases/$(database)/documents/chats/$(chatId))
+              && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants)
+        );
+      }
+
+      // Only signed-in participants can read or update the conversation document.
+      allow read, update: if isChatParticipant();
+
+      // A user can start a conversation if they are listed in participants.
+      allow create: if signedIn() && (request.auth.uid in request.resource.data.participants);
+
+      // Conversations cannot be deleted directly to preserve chat history.
+      allow delete: if false;
+
+      // ---------------------------------------------------------- messages
+      //
+      // Individual messages in the chat conversation.
+      // Ordered chronologically by timestamp.
+      match /messages/{messageId} {
+
+        // Any authenticated participant of the chat can read messages.
+        allow read: if isChatParticipant();
+
+        // An authenticated user can create a message if they are the sender.
+        allow create: if signedIn()
+                      && request.auth.uid == request.resource.data.sender_id
+                      && request.resource.data.text is string
+                      && request.resource.data.text.size() > 0
+                      && request.resource.data.text.size() <= 5000;
+
+        // The receiver can mark a message as read (is_read, read_at).
+        // Other fields (text, sender_id, receiver_id, timestamp) cannot be modified.
+        allow update: if signedIn()
+                      && request.auth.uid == resource.data.receiver_id
+                      && request.resource.data.diff(resource.data)
+                           .affectedKeys()
+                           .hasOnly(['is_read', 'read_at']);
+
+        // Messages cannot be deleted to preserve the audit trail.
+        allow delete: if false;
+      }
+
+      // ------------------------------------------------------------ calls
+      //
+      // 1-on-1 WebRTC audio/video call signaling sessions.
+      // Subcollections hold ICE candidates for caller and receiver.
+      match /calls/{callId} {
+
+        // Allow read: if signedIn() and (caller is callerId or receiverId, or authenticated participant of parent chat)
+        allow read: if signedIn() && (
+          resource == null
+          || request.auth.uid == resource.data.callerId
+          || request.auth.uid == resource.data.receiverId
+          || (exists(/databases/$(database)/documents/chats/$(chatId))
+              && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants)
+        );
+
+        // Allow create: if signedIn() and request.auth.uid == request.resource.data.callerId
+        allow create: if signedIn()
+                      && request.auth.uid == request.resource.data.callerId;
+
+        // Allow update: if signedIn() and (request.auth.uid == resource.data.callerId || request.auth.uid == resource.data.receiverId)
+        allow update: if signedIn()
+                      && (request.auth.uid == resource.data.callerId
+                          || request.auth.uid == resource.data.receiverId);
+
+        // Allow delete: if false
+        allow delete: if false;
+
+        match /callerCandidates/{candidateId} {
+          allow read, create: if signedIn();
+        }
+
+        match /receiverCandidates/{candidateId} {
+          allow read, create: if signedIn();
+        }
+      }
+    }
+
+    // ----------------------------------------------------------- accounts
+    //
+    // Accounts module entries (Jorimana and Expense records)
+    match /accounts/{accountId} {
+      allow read, write, delete: if signedIn();
     }
 
     // Everything else is closed until a feature needs it.

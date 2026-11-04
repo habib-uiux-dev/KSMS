@@ -10,6 +10,12 @@ import '../../feature/home/view/home_screen.dart';
 import '../../feature/orders/binding/orders_binding.dart';
 import '../../feature/orders/view/orders_shell_screen.dart';
 import '../../feature/splash/view/splash_screen.dart';
+import '../../feature/chat/binding/chat_binding.dart';
+import '../../feature/chat/view/chat_detail_screen.dart';
+import '../../feature/chat/view/chat_list_screen.dart';
+import '../../feature/accounts/binding/accounts_binding.dart';
+import '../../feature/accounts/view/accounts_screen.dart';
+import '../../feature/accounts/view/accounts_history_screen.dart';
 import 'app_pages.dart';
 
 /// The route table handed to GetMaterialApp. Bind a controller to a page with
@@ -61,6 +67,30 @@ class AppPages {
       name: Routes.adminProductForm,
       page: () => const AdminProductFormScreen(),
       transition: Transition.native,
+    ),
+    GetPage(
+      name: Routes.chatList,
+      page: () => const ChatListScreen(),
+      transition: Transition.native,
+      binding: ChatListBinding(),
+    ),
+    GetPage(
+      name: Routes.chatDetail,
+      page: () => const ChatDetailScreen(),
+      transition: Transition.native,
+      binding: ChatDetailBinding(),
+    ),
+    GetPage(
+      name: Routes.accounts,
+      page: () => const AccountsScreen(),
+      transition: Transition.native,
+      binding: AccountsBinding(),
+    ),
+    GetPage(
+      name: Routes.accountsHistory,
+      page: () => const AccountsHistoryScreen(),
+      transition: Transition.native,
+      binding: AccountsBinding(),
     ),
   ];
 }

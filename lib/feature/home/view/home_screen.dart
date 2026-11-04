@@ -95,6 +95,11 @@ class HomeScreen extends StatelessWidget {
         // from us.
         actions: [
           IconButton(
+            onPressed: () => Get.toNamed(Routes.chatList),
+            icon: const Icon(Icons.chat_outlined, color: Colors.white),
+            tooltip: 'Chat',
+          ),
+          IconButton(
             onPressed: () => Get.to(() => const AdminNotifyScreen()),
             icon: const Icon(Icons.notifications_outlined, color: Colors.white),
             tooltip: 'Notifications',

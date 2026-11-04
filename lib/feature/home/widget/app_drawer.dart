@@ -86,6 +86,14 @@ class AppDrawer extends StatelessWidget {
               _askForMealGiftAdminCode(context);
             },
           ),
+          _Tile(
+            icon: Icons.account_balance_outlined,
+            label: 'Accounts',
+            onTap: () {
+              Navigator.pop(context);
+              Get.toNamed(Routes.accounts);
+            },
+          ),
 
           const Spacer(),
           Divider(height: 1, color: _line),

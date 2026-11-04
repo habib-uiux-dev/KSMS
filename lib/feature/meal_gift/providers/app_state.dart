@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
+import '../../../core/utils/user_filter.dart';
 import '../../../core/services/firebase/app_firestore.dart';
 import '../../../core/services/notifications/push_sender.dart';
 import '../../admin/controller/admin_notify_controller.dart';
@@ -50,7 +51,12 @@ class AppState extends ChangeNotifier {
   final List<User> _users = [];
   List<User> get allUsers {
     final seen = <String>{};
-    return _users.where((u) => u.id.isNotEmpty && seen.add(u.id)).toList();
+    return _users
+        .where((u) =>
+            u.id.isNotEmpty &&
+            !UserFilter.isExcluded(uid: u.id, name: u.name, email: u.email) &&
+            seen.add(u.id))
+        .toList();
   }
 
   final List<BaseEvent> _events = [];
@@ -65,8 +71,9 @@ class AppState extends ChangeNotifier {
   Future<void> _initFirebaseAndPrefs() async {
     await _loadStateFromPrefs();
 
-    // Auto-sync any locally saved data to Firestore
+    // Auto-sync any locally saved data to Firestore (excluding removed test accounts)
     for (var u in _users) {
+      if (UserFilter.isExcluded(uid: u.id, name: u.name, email: u.email)) continue;
       try {
         await _firestore.collection('users').doc(u.id).set(u.toJson(), SetOptions(merge: true));
       } catch (e) {
@@ -93,7 +100,12 @@ class AppState extends ChangeNotifier {
             data['id'] = doc.id;
           }
           final user = User.fromJson(data);
-          if (user.id.isNotEmpty) {
+          if (user.id.isNotEmpty &&
+              !UserFilter.isExcluded(
+                uid: user.id,
+                name: user.name,
+                email: user.email,
+              )) {
             _users.add(user);
           }
         }
@@ -164,7 +176,12 @@ class AppState extends ChangeNotifier {
             data['id'] = doc.id;
           }
           final user = User.fromJson(data);
-          if (user.id.isNotEmpty) {
+          if (user.id.isNotEmpty &&
+              !UserFilter.isExcluded(
+                uid: user.id,
+                name: user.name,
+                email: user.email,
+              )) {
             _users.add(user);
           }
         }
@@ -193,8 +210,18 @@ class AppState extends ChangeNotifier {
       _users.clear();
       for (var str in usersJson) {
         final map = jsonDecode(str);
-        _users.add(User.fromJson(map));
+        final u = User.fromJson(map);
+        if (u.id.isNotEmpty &&
+            !UserFilter.isExcluded(
+              uid: u.id,
+              name: u.name,
+              email: u.email,
+            )) {
+          _users.add(u);
+        }
       }
+      // Re-save so excluded users are purged from device SharedPreferences
+      await _saveUsersToPrefs();
     }
 
     final eventsJson = prefs.getStringList('app_events');

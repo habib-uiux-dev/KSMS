@@ -12,6 +12,7 @@ import '../../../core/transition/screen_transition.dart';
 import '../../../core/services/firebase/user_repository.dart';
 import '../../../core/utils/app_color.dart';
 import '../../auth/controller/auth_controller.dart';
+import '../../../core/services/version/app_update_service.dart';
 import '../../../core/utils/app_fonts.dart';
 import '../../../core/utils/session_manager.dart';
 
@@ -40,6 +41,22 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _decideNextScreen() async {
+    // 0. Force Update Check: Blocks old versions from entering the app.
+    try {
+      final updateConfig = await AppUpdateService.instance.fetchAppVersion();
+      if (updateConfig != null) {
+        final isRequired =
+            await AppUpdateService.instance.isUpdateRequired(updateConfig);
+        if (isRequired) {
+          if (!mounted) return;
+          AppUpdateService.instance.showForceUpdateDialog(updateConfig);
+          return; // Stop navigation completely until updated!
+        }
+      }
+    } catch (e) {
+      log('Force update check failed: $e');
+    }
+
     // FirebaseAuth is the source of truth, not the stored flag: it restores the
     // session from disk during initializeApp, and it is what actually decides
     // whether Firestore reads will be allowed. The local flag can go stale

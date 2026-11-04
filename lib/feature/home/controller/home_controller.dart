@@ -10,6 +10,8 @@ import '../../../core/services/notifications/fcm_token_sync.dart';
 import '../../../core/services/firebase/product_repository.dart';
 import '../../../core/services/firebase/settings_repository.dart';
 import '../../../core/services/firebase/user_repository.dart';
+import '../../../core/services/version/app_update_service.dart';
+import '../../../core/services/version/app_version_model.dart';
 import '../../../core/widgets/show_custom_toast.dart';
 import '../../auth/model/app_user.dart';
 import '../model/order.dart';
@@ -62,6 +64,7 @@ class HomeController extends GetxController {
   StreamSubscription<List<Product>>? _productSub;
   StreamSubscription<ShopOrder?>? _orderSub;
   StreamSubscription<bool>? _settingsSub;
+  StreamSubscription<AppVersionModel>? _versionSub;
 
   /// The basket is filled from the saved order once, on first load. Without
   /// this guard every incoming snapshot - including the one caused by the
@@ -77,6 +80,7 @@ class HomeController extends GetxController {
     _listenToProducts();
     _listenToTodayOrder();
     _listenToSettings();
+    _listenToAppVersion();
 
     // Home is the first screen every signed-in person reaches, which makes it
     // the one place the uid is guaranteed to exist. Fire-and-forget: nothing
@@ -85,11 +89,23 @@ class HomeController extends GetxController {
     if (id != null) unawaited(FcmTokenSync.start(id));
   }
 
+  void _listenToAppVersion() {
+    _versionSub =
+        AppUpdateService.instance.watchAppVersion().listen((config) async {
+      final isRequired =
+          await AppUpdateService.instance.isUpdateRequired(config);
+      if (isRequired) {
+        AppUpdateService.instance.showForceUpdateDialog(config);
+      }
+    });
+  }
+
   @override
   void onClose() {
     _productSub?.cancel();
     _orderSub?.cancel();
     _settingsSub?.cancel();
+    _versionSub?.cancel();
     super.onClose();
   }
 

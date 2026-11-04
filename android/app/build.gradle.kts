@@ -32,7 +32,7 @@ android {
 
     defaultConfig {
         applicationId = "com.kms.app"
-        minSdk = flutter.minSdkVersion
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         // Both come from pubspec.yaml's `version: 1.0.0+1` - bump it there, not
         // here, or the two will drift apart.
